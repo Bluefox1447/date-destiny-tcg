@@ -4,7 +4,8 @@ const CODE=document.body.dataset.room, MYID=+document.body.dataset.uid;
 let ACT=MYID, lastTurn=null, atkSel=null, bonusA=0, bonusD=0, combatOn=false;      // ACT = ฝั่งที่กำลังควบคุม (ห้องทดสอบสลับได้)
 const socket=io();
 const SLEEVE={me:'',opp:''};
-let S=null, mode=null, seated=false, autoPay=true, flipLabels=true, dragIid=null;
+let S=null, mode=null, seated=false, autoPay=true, flipLabels=true, dragIid=null, dragCid=null, lastRoll=null;
+const DICE_TURNS=[3,5,7,9], LINK_MAX=3;
 const ZN={hp:'Firewall (HP)',partners:'Partners',attack:'Attack',protect:'Protect',server:'Server',delect:'Delect',deck:'Deck',hand:'มือ'};
 
 /* ---------------- Socket ---------------- */
@@ -14,6 +15,8 @@ $('#joinBtn').onclick=()=>{$('#deckpick').style.display='none';socket.emit('join
 $('#specBtn').onclick=()=>{$('#deckpick').style.display='none';socket.emit('join',{code:CODE,spectate:true})};
 socket.on('state',s=>{
   S=s;
+  const rl=S.state&&S.state.roll, rkey=rl?`${rl.id}-${rl.ts}`:'';      // ลูกเต๋า D4: เล่นอนิเมชันเมื่อมีการทอยใหม่
+  if(lastRoll===null) lastRoll=rkey; else if(rkey&&rkey!==lastRoll){lastRoll=rkey;showDice(rl);} else if(!rkey) lastRoll=rkey;
   if(S.solo&&S.state){   // ห้องทดสอบ: สลับไปควบคุมฝั่งที่ถึงเทิร์นให้อัตโนมัติ
     if(S.state.turn!=null&&S.state.turn!==lastTurn) ACT=S.state.turn;
     lastTurn=S.state.turn;
@@ -39,7 +42,7 @@ function cardEl(c,zn,side,mini=true){
   const base=`data-iid="${c.iid}" data-zone="${zn}" data-side="${side}"${mine?' draggable="true"':''}`;
   if(back){const sl=SLEEVE[side]; return `<div class="card ${mini?'mini':''} back ${sl?'img':''} ${c.tap?'tap':''}" ${base}${sl?` style="background-image:url('${esc(sl)}')"`:''}>${sl?'':'<i>DD</i>'}</div>`;}
   const cd=S.cards[c.cid]; if(!cd) return '';
-  return cardHTML(cd,{mini,cls:(c.tap?'tap ':'')+(!c.up&&zn!=='hand'?'dn':''),attrs:base+` data-cid="${c.cid}"`,ctr:c.ctr,dmg:c.dmg});
+  return cardHTML(cd,{mini,cls:(c.tap?'tap ':'')+(!c.up&&zn!=='hand'?'dn':''),attrs:base+` data-cid="${c.cid}"`,ctr:c.ctr,dmg:c.dmg,lnk:(c.links||[]).length});
 }
 
 /* ---------------- Track (แถบเลข Code 1-10 ตามเสื่อ) ---------------- */
@@ -147,12 +150,13 @@ function setupHTML(mp,op,opp,st){
 }
 function gameHTML(st,opp){
   const mine=st.turn===ACT, PH=[['generate','Generate'],['combat','Combat'],['end','End']];
-  let h=`<div class="row" style="margin-bottom:8px"><b class="mono">TURN ${st.turn_no}</b><span class="turnmark">${mine?'เทิร์นของคุณ':'เทิร์นของ '+esc(nameOf(st.turn))}</span></div>
+  let h=`<div class="row" style="margin-bottom:8px"><b class="mono">TURN ${(st.p[st.turn]||{}).turns||st.turn_no}</b><span class="turnmark">${mine?'เทิร์นของคุณ':'เทิร์นของ '+esc(nameOf(st.turn))}</span></div>
    <div class="phases">${PH.map(([k,l])=>`<span class="${st.phase===k?'on':''}">${l}</span>`).join('')}</div>`;
   if(!mine) return h+'<p class="mut">รอฝ่ายตรงข้ามเล่น… (คุณยังย้ายการ์ดของตัวเองได้)</p>';
   if(st.phase==='generate'){
-    if(!st.gen_drawn) h+=`<p style="margin:0 0 6px">Generate: จั่วการ์ด 1 ใบ แล้วทิ้งการ์ดบนมือ 1 ใบ จะได้ 2 Code</p><button class="btn pri sm" data-do="gen_draw">Generate: จั่วการ์ด 1 ใบ</button>`;
-    else h+=`<p style="margin:0 0 6px">จั่วแล้ว — ทิ้งการ์ดบนมือ 1 ใบ แล้วรับ 2 Code</p><button class="btn pri sm" data-do="gen">${mode==='discard'?'คลิกการ์ดในมือที่จะทิ้ง…':'เลือกการ์ดที่จะทิ้ง'}</button>`;
+    const own=st.p[ACT].turns, dice=DICE_TURNS.includes(own);
+    h+=`<p style="margin:0 0 6px">Generate: จั่วการ์ด 1 ใบ และรับ 2 Code ทันที${dice?` <b style="color:var(--sig)">+ ทอยลูกเต๋า D4 เป็นโค้ดโบนัส (เทิร์นที่ ${own})</b>`:''}</p>
+      <button class="btn pri sm" data-do="generate">Generate${dice?' + ทอย D4':''}</button>`;
   }
   if(st.phase==='combat'){
     const used=st.acts.length>=st.combat_no, A=[['summon','Summon'],['combat','Combat'],['move','Move']];
@@ -166,45 +170,48 @@ function gameHTML(st,opp){
 }
 const NEU=['entity','partners'];
 const cinfo=c=>(c&&!c.h&&S.cards[c.cid])||null;
+const eff=c=>{const d=cinfo(c)||{}; let atk=d.atk||0,crit=d.crit||0,def=d.def||0;
+  (c.links||[]).forEach(l=>{const li=S.cards[l.cid]||{}; atk+=li.link_atk||0; crit+=li.link_crit||0; def+=li.link_def||0;});
+  return {atk:Math.max(0,atk),crit:Math.max(0,crit),def};};
 const myField=st=>{const z=st.p[ACT].z; return z.attack.map(c=>[c,'A']).concat(z.protect.map(c=>[c,'P'])).filter(([c])=>cinfo(c)&&NEU.includes(cinfo(c).type));};
-function calcHit(A,a,T,d){
-  const counter=S.rules?S.rules.counter:true;
-  const atk=a.atk+bonusA, full=d.def+bonusD, rem=full-(T.dmg||0), after=rem-atk, kill=after<=0;
-  const aRem=a.def-(A.dmg||0), back=counter?d.atk:0, aAfter=aRem-back, aDie=counter&&aAfter<=0;
-  return {counter,atk,full,rem,after,kill,back,aAfter,aDie};
+function calcHit(A,T){
+  const counter=S.rules?S.rules.counter:true, ae=eff(A), te=eff(T);
+  const atk=ae.atk+bonusA, full=te.def+bonusD, rem=full-(T.dmg||0), after=rem-atk, kill=after<=0;
+  const aRem=ae.def-(A.dmg||0), back=counter?te.atk:0, aAfter=aRem-back, aDie=counter&&aAfter<=0;
+  return {counter,atk,full,rem,after,kill,back,aAfter,aDie,te,ae};
 }
-const hitText=(a,d,k)=>`${a.name} โจมตี ${d.name}: DEF ${k.rem} − ${k.atk} → ${k.kill?'ถูกทำลาย':'เหลือ '+k.after}${k.counter?` · สวนกลับ ${k.back} → ${k.aDie?'ผู้โจมตีถูกทำลาย':'ผู้โจมตีเหลือ '+k.aAfter}`:''}`;
+const hitText=(an,dn,k)=>`${an} โจมตี ${dn}: DEF ${k.rem} − ${k.atk} → ${k.kill?'ถูกทำลาย':'เหลือ '+k.after}${k.counter?` · สวนกลับ ${k.back} → ${k.aDie?'ผู้โจมตีถูกทำลาย':'ผู้โจมตีเหลือ '+k.aAfter}`:''}`;
 function combatHTML(st,opp){
-  const me=st.p[ACT], op=st.p[opp.uid], used=new Set(st.attacked||[]);
+  const op=st.p[opp.uid], used=new Set(st.attacked||[]);
   const field=myField(st);
   combatOn=true;
   if(!field.length) return `<div class="combat"><b>ศึก (Combat)</b><p class="mut" style="margin:4px 0 0">ยังไม่มี Neurous บนสนามที่โจมตีได้ — ใช้ Summon ลงสนามก่อนในเฟสถัดไป</p></div>`;
   if(!field.some(([c])=>c.iid===atkSel)) atkSel=(field.find(([c])=>!used.has(c.iid))||field[0])[0].iid;
-  const [A]=field.find(([c])=>c.iid===atkSel), a=cinfo(A), spent=used.has(A.iid);
+  const [A]=field.find(([c])=>c.iid===atkSel), ae=eff(A), spent=used.has(A.iid);
   const row=(t,zl)=>{
     const d=cinfo(t);
     if(!d) return `<div class="tg"><span class="nm">การ์ดคว่ำ (${zl})</span><button class="btn sm" data-do="atk" data-t="${t.iid}" ${spent?'disabled':''}>โจมตี</button></div>`;
     if(!NEU.includes(d.type)) return '';
-    const k=calcHit(A,a,t,d);
-    return `<div class="tg"><span class="nm">${esc(d.name)} <small>${zl}</small></span><b>ATK ${d.atk} / DEF ${k.rem}${t.dmg?` <small>(${k.full}−${t.dmg})</small>`:''}</b>
+    const k=calcHit(A,t);
+    return `<div class="tg"><span class="nm">${esc(d.name)} <small>${zl}${(t.links||[]).length?` · Link ${(t.links||[]).length}`:''}</small></span><b>ATK ${k.te.atk} / DEF ${k.rem}${t.dmg?` <small>(${k.full}−${t.dmg})</small>`:''}</b>
       <button class="btn sm ${k.kill?'pri':''}" data-do="atk" data-t="${t.iid}" ${spent?'disabled':''}>โจมตี</button>
       <div class="calc"><span class="${k.kill?'ok':'no'}">DEF ${k.rem} − ${k.atk} → ${k.kill?'ถูกทำลาย':'เหลือ '+k.after}</span>
       ${k.counter?`<span class="${k.aDie?'bad':'mut'}">สวนกลับ ${k.back} → ${k.aDie?'ผู้โจมตีถูกทำลาย':'ผู้โจมตีเหลือ DEF '+k.aAfter}</span>`:''}</div></div>`;
   };
   const prot=op.z.protect, atkz=op.z.attack;
   const rows=prot.map(t=>row(t,'Protect')).join('')+atkz.map(t=>row(t,'Attack')).join('');
-  const dmg=Math.max(1,a.crit);
+  const dmg=Math.max(1,ae.crit);
   const player=prot.length
     ? `<div class="tg"><span class="nm">ผู้เล่น ${esc(opp.name)}</span><b>HP ${op.z.hp.length}</b><button class="btn sm" disabled>โจมตีผู้เล่น</button>
         <div class="calc"><span class="mut">ต้องทำให้ Protect Zone ของฝั่งตรงข้ามว่างก่อน</span></div></div>`
     : `<div class="tg"><span class="nm">ผู้เล่น ${esc(opp.name)}</span><b>HP ${op.z.hp.length}</b>
         <button class="btn sm pri" data-do="atk" data-t="player" ${spent?'disabled':''}>โจมตีผู้เล่นโดยตรง</button>
-        <div class="calc"><span class="ok">Protect Zone ว่าง → CRIT ${a.crit} ลด HP −${dmg}</span></div></div>`;
-  const chips=field.map(([c,zl])=>{const d=cinfo(c); return `<button class="chip ${c.iid===atkSel?'on':''} ${used.has(c.iid)?'used':''}" data-do="selatk" data-i="${c.iid}">${esc(d.name)} <b>ATK ${d.atk}</b> <small>${zl==='A'?'Attack':'Protect'}</small>${used.has(c.iid)?' ✓':''}</button>`}).join('');
+        <div class="calc"><span class="ok">Protect Zone ว่าง → CRIT ${ae.crit} ลด HP −${dmg}</span></div></div>`;
+  const chips=field.map(([c,zl])=>{const d=cinfo(c); return `<button class="chip ${c.iid===atkSel?'on':''} ${used.has(c.iid)?'used':''}" data-do="selatk" data-i="${c.iid}">${esc(d.name)} <b>ATK ${eff(c).atk}</b> <small>${zl==='A'?'Attack':'Protect'}</small>${used.has(c.iid)?' ✓':''}</button>`}).join('');
   return `<div class="combat"><b>ศึก (Combat)</b>
     <div class="mut" style="font-size:.8rem;margin:2px 0 6px">1) เลือกผู้โจมตี (Neurous ใบไหนก็ได้บนสนามเรา) — หรือคลิกการ์ดบนสนามเลย<br>2) เลือกเป้าหมาย: การ์ดใบไหนก็ได้บนสนามฝั่งตรงข้าม หรือผู้เล่นเมื่อ Protect Zone ว่าง (คลิกการ์ดที่กรอบแดงบนสนามเพื่อโจมตี)</div>
     <div class="chips">${chips}</div>
-    <div class="row" style="gap:6px;margin:8px 0;font-size:.85rem">ATK <b>${a.atk}</b> + <input type="number" id="bA" value="${bonusA}" style="width:58px;padding:2px 6px"> เอฟเฟค · DEF เป้าหมาย + <input type="number" id="bD" value="${bonusD}" style="width:58px;padding:2px 6px"></div>
+    <div class="row" style="gap:6px;margin:8px 0;font-size:.85rem">ATK <b>${ae.atk}</b>${(A.links||[]).length?` <small class="mut">(รวม Link ${(A.links||[]).length})</small>`:''} + <input type="number" id="bA" value="${bonusA}" style="width:58px;padding:2px 6px"> เอฟเฟค · DEF เป้าหมาย + <input type="number" id="bD" value="${bonusD}" style="width:58px;padding:2px 6px"></div>
     ${spent?'<div class="mut" style="font-size:.85rem">ใบนี้โจมตีไปแล้วในเฟสนี้ — เลือกใบอื่น</div>':''}
     <div class="tgs">${rows}${player}</div>
     <div class="mut" style="font-size:.76rem;margin-top:6px">แบบ Hearthstone: ดาเมจ = ATK ของผู้โจมตี ลด DEF ของเป้าหมายแบบสะสม${S.rules&&S.rules.counter?' เป้าหมายสวนกลับด้วย ATK ของตัวเอง':''} · DEF เหลือ 0 = ถูกทำลาย ลง Delect · โจมตีตรง = ลด HP เท่าค่า CRIT (อย่างน้อย 1)</div></div>`;
@@ -217,16 +224,15 @@ function markCombat(){
   $$('.half.opp .z-protect .card, .half.opp .z-attack .card').forEach(e=>e.classList.add('tgt'));
   if(!op.z.protect.length){const z=$('.half.opp .z-hp'); if(z) z.classList.add('tgt');}
 }
-// โจมตีด้วยการคลิกบนสนาม: ยืนยันก่อนทุกครั้ง
 function boardAttack(target){
   const st=S.state, {opp}=sides(), op=pst(opp);
   const f=myField(st).find(([c])=>c.iid===atkSel); if(!f) return toast('เลือกผู้โจมตีก่อน','err');
   const [A]=f, a=cinfo(A);
   if(st.attacked&&st.attacked.includes(A.iid)) return toast('ใบนี้โจมตีไปแล้วในเฟสนี้ เลือกใบอื่น','err');
   let text;
-  if(target==='player') text=`${a.name} โจมตี ${opp.name} โดยตรง → HP −${Math.max(1,a.crit)}`;
+  if(target==='player') text=`${a.name} โจมตี ${opp.name} โดยตรง → HP −${Math.max(1,eff(A).crit)}`;
   else{const T=[...op.z.protect,...op.z.attack].find(c=>c.iid===target), d=cinfo(T);
-    text=d?hitText(a,d,calcHit(A,a,T,d)):`${a.name} โจมตีการ์ดคว่ำ`;}
+    text=d?hitText(a.name,d.name,calcHit(A,T)):`${a.name} โจมตีการ์ดคว่ำ`;}
   if(confirm(text+'\n\nยืนยันโจมตี?')) act('attack',{iid:atkSel,target,atk_bonus:bonusA,def_bonus:bonusD});
 }
 function toolsHTML(st){
@@ -238,14 +244,14 @@ function toolsHTML(st){
    ${play&&mine?`<div class="btns"><span class="mut" style="font-size:.8rem">ข้ามไปเฟส:</span>${['generate','combat'].map(p=>`<button class="btn sm" data-do="phase" data-to="${p}">${p}</button>`).join('')}</div>`:''}
    <label class="row" style="font-size:.88rem"><input type="checkbox" id="optPay" ${autoPay?'checked':''}> หักค่าคอส/Code อัตโนมัติตอน Summon/Move</label>
    <label class="row" style="font-size:.88rem"><input type="checkbox" id="optFlip" ${flipLabels?'checked':''}> หมุนป้ายฝั่งตรงข้ามแบบเสื่อจริง</label>
-   <div class="btns" style="margin-top:8px"><button class="btn sm dng" data-do="concede" ${play?'':'disabled'}>ยอมแพ้</button>${S.host===MYID?'<button class="btn sm" data-do="reset">รีเซ็ตเกม</button>':''}</div>`;
+   <div class="btns" style="margin-top:8px"><button class="btn sm" data-do="fullscreen" title="กด F ก็ได้">⛶ เต็มจอ</button><button class="btn sm dng" data-do="concede" ${play?'':'disabled'}>ยอมแพ้</button>${S.host===MYID?'<button class="btn sm" data-do="reset">รีเซ็ตเกม</button>':''}</div>`;
 }
 document.addEventListener('click',e=>{
   const b=e.target.closest('[data-do]'); if(!b) return; const k=b.dataset.do;
   if(['place','setup_draw','mulligan','setup_hp','ready','shuffle','end_turn','add_combat','undo_act','hp_hit'].includes(k)) act(k);
   else if(k==='first') act('first',{who:b.dataset.who});
-  else if(k==='gen_draw'){mode='discard';act('gen_draw');toast('จั่วแล้ว คลิกการ์ดในมือที่ต้องการทิ้ง');}
-  else if(k==='gen'){mode='discard';toast('คลิกการ์ดในมือที่ต้องการทิ้ง');panel();}
+  else if(k==='generate') act('generate');
+  else if(k==='fullscreen') toggleFS();
   else if(k==='draw') act('draw',{n:+b.dataset.n||1});
   else if(k==='peek') act('peek',{n:+b.dataset.n||0});
   else if(k==='ca') act('combat_act',{name:b.dataset.n});
@@ -276,24 +282,40 @@ function showCtx(x,y,html,cb){
   d.style.left=Math.max(6,Math.min(x,innerWidth-r.width-8))+'px'; d.style.top=Math.max(6,Math.min(y,innerHeight-r.height-8))+'px';
 }
 document.addEventListener('click',e=>{if(!e.target.closest('#ctx'))closeCtx();},true);
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeCtx();closeModal();mode=null;}});
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){closeCtx();closeModal();closeZoom();mode=null;}
+  else if((e.key==='f'||e.key==='F')&&!e.ctrlKey&&!e.metaKey&&!e.target.matches('input,textarea,select')) toggleFS();
+});
 
 function cardMenu(e,iid,zn){
+  const inst=findInst(iid);
+  const cid=inst?inst.cid:((document.querySelector(`.card[data-iid="${iid}"]`)||{dataset:{}}).dataset.cid);
+  const cd=cid&&S.cards[cid];
   const D=[['hand','ขึ้นมือ'],['attack','Attack Zone'],['protect','Protect Zone'],['partners','Partners Zone'],['server','Server Zone'],['delect','Delect Zone'],['hp','HP (คว่ำ)']];
-  let h='';
+  let h=cd?`<button data-m="zoom">🔍 ดูการ์ดขยาย</button>`:'';
   if(['attack','protect','partners','server'].includes(zn))
     h+=`<button data-m="tap">หมุน / ตั้งการ์ด (Tap)</button><button data-m="flip">พลิกหน้า / คว่ำ</button>
-        <div class="g"><button data-m="ctr" data-d="1">ตัวนับ +1</button><button data-m="ctr" data-d="-1">ตัวนับ −1</button></div>
+        <div class="g"><button data-m="ctr" data-d="1">บัพ/ตัวนับ +1</button><button data-m="ctr" data-d="-1">บัพ/ตัวนับ −1</button></div>
         <div class="g"><button data-m="dmg" data-d="1">ดาเมจ +1</button><button data-m="dmg" data-d="-1">ดาเมจ −1</button></div>`;
   if(zn==='hand') h+=`<button data-m="flip">เปิดเผย / ซ่อนจากฝ่ายตรงข้าม</button>`;
+  if(cd&&cd.type==='ship'&&['hand','server','partners','attack','protect'].includes(zn)&&S.state){
+    const tg=myField(S.state);
+    h+=`<h4>Link กับ Neurous (ได้ไม่เกิน ${LINK_MAX} ใบต่อ Neurous)</h4>`+(tg.length?tg.map(([t])=>{const n=(t.links||[]).length;
+      return `<button data-m="link" data-t="${t.iid}" ${n>=LINK_MAX?'disabled':''}>${esc(cinfo(t).name)} (${n}/${LINK_MAX})</button>`}).join(''):'<div class="mut" style="padding:2px 10px;font-size:.85rem">ยังไม่มี Neurous บนสนาม</div>');
+  }
+  if(inst&&(inst.links||[]).length&&['attack','protect'].includes(zn))
+    h+=`<h4>ถอด Link</h4>`+inst.links.map(l=>`<div class="g"><button data-m="unlink" data-s="${l.iid}" data-to="delect">${esc((S.cards[l.cid]||{}).name)} → Delect</button><button data-m="unlink" data-s="${l.iid}" data-to="hand">→ มือ</button></div>`).join('');
   h+=`<h4>ย้ายไปที่</h4><div class="g">${D.filter(d=>d[0]!==zn).map(d=>`<button data-m="mv" data-to="${d[0]}">${d[1]}</button>`).join('')}
       <button data-m="mv" data-to="deck" data-pos="top">เด็ค (บนสุด)</button><button data-m="mv" data-to="deck" data-pos="bottom">เด็ค (ล่างสุด)</button></div>`;
   showCtx(e.clientX,e.clientY,h,b=>{
     const m=b.dataset.m;
+    if(m==='zoom') return zoomCard(cid,iid);
     if(m==='mv') act('move',{iid,to:b.dataset.to,pos:b.dataset.pos,pay:autoPay});
     else if(m==='tap') act('tap',{iid}); else if(m==='flip') act('flip',{iid});
     else if(m==='ctr') act('ctr',{iid,delta:+b.dataset.d});
     else if(m==='dmg') act('dmg',{iid,delta:+b.dataset.d});
+    else if(m==='link') act('link',{iid,target:+b.dataset.t,pay:autoPay});
+    else if(m==='unlink') act('unlink',{iid:+b.dataset.s,target:iid,to:b.dataset.to});
     closeModal();
   });
 }
@@ -337,19 +359,78 @@ document.addEventListener('click',e=>{
 document.addEventListener('contextmenu',e=>{const el=e.target.closest('.card[data-iid][data-side="me"]'); if(el&&seated){e.preventDefault();cardMenu(e,+el.dataset.iid,el.dataset.zone);}});
 
 /* ---------------- ดูรายละเอียดการ์ด ---------------- */
+const instIndex=()=>{const m={}; if(!S||!S.state) return m;
+  for(const uid in S.state.p){const z=S.state.p[uid].z; for(const zn in z){const arr=z[zn]; if(!Array.isArray(arr)) continue;
+    arr.forEach(c=>{m[c.iid]=c; (c.links||[]).forEach(l=>{m[l.iid]=l;});});}}
+  return m;};
+const findInst=iid=>instIndex()[iid]||null;
+function detailHTML(cd,inst){
+  const neu=NEU.includes(cd.type), e=inst&&neu?eff(inst):null, sg=n=>(n>=0?'+':'')+n;
+  let stats='';
+  if(neu) stats=`<div class="isr"><span>ATK <b>${e?e.atk:cd.atk}</b></span><span>CRIT <b>${e?e.crit:cd.crit}</b></span><span>DEF <b>${e?e.def-(inst.dmg||0):cd.def}</b>${inst&&inst.dmg?` <small>/ ${e.def}</small>`:''}</span></div>`;
+  else if(cd.type==='ship') stats=`<div class="isr"><span>Link ATK <b>${sg(cd.link_atk)}</b></span><span>CRIT <b>${sg(cd.link_crit)}</b></span><span>DEF <b>${sg(cd.link_def)}</b></span></div>`;
+  const lk=inst&&(inst.links||[]).length?`<div class="islk"><b>Link ${inst.links.length}/${LINK_MAX}</b>${inst.links.map(l=>{const li=S.cards[l.cid]||{};
+    return `<div>${esc(li.name)} <small>ATK ${sg(li.link_atk||0)} · CRIT ${sg(li.link_crit||0)} · DEF ${sg(li.link_def||0)}</small></div>`}).join('')}</div>`:'';
+  const buff=inst&&inst.ctr?`<div class="imeta">บัพ/ตัวนับ: <b>${inst.ctr>0?'+':''}${inst.ctr}</b></div>`:'';
+  return `<div class="iname">${esc(cd.name)}</div><div class="imeta">${TYPE_LABEL[cd.type]||cd.type} · Cost ${cd.cost}${cd.server?' · '+esc(cd.server):''}</div>${stats}${buff}${lk}
+    <div class="ieff">${esc(cd.effect)||'<span class="mut">ไม่มีเอฟเฟค</span>'}</div>`;
+}
 function inspect(el){
   const box=$('#inspect'), cd=el.dataset.cid&&S&&S.cards[el.dataset.cid];
-  box.innerHTML=cd?cardHTML(cd)+(cd.effect?`<p>${esc(cd.effect)}</p>`:''):`<div class="card back ${SLEEVE[el.dataset.side]?'img':''}" ${SLEEVE[el.dataset.side]?`style="background-image:url('${esc(SLEEVE[el.dataset.side])}')"`:''}>${SLEEVE[el.dataset.side]?'':'<i>DD</i>'}</div><p class="mut">การ์ดที่ถูกซ่อน</p>`;
+  if(!cd){box.innerHTML=`<div class="card back ${SLEEVE[el.dataset.side]?'img':''}" ${SLEEVE[el.dataset.side]?`style="background-image:url('${esc(SLEEVE[el.dataset.side])}')"`:''}>${SLEEVE[el.dataset.side]?'':'<i>DD</i>'}</div><p class="mut">การ์ดที่ถูกซ่อน</p>`;return;}
+  const iid=+el.dataset.iid||0, inst=iid?findInst(iid):null;
+  box.innerHTML=cardHTML(cd,{attrs:`data-zoom="${cd.id}" data-ziid="${iid}" style="cursor:zoom-in" title="คลิกเพื่อขยาย"`})+`<div class="itext">${detailHTML(cd,inst)}<div class="ihint">คลิกที่การ์ดเพื่อดูขยาย</div></div>`;
 }
+function zoomCard(cid,iid){
+  const cd=S&&S.cards[cid]; if(!cd) return;
+  $('#zcard').innerHTML=cardHTML(cd,{big:true}); $('#ztext').innerHTML=detailHTML(cd,iid?findInst(+iid):null);
+  $('#zoom').classList.remove('hide');
+}
+const closeZoom=()=>$('#zoom').classList.add('hide');
+$('#zclose').onclick=closeZoom;
+$('#zoom').addEventListener('click',e=>{if(e.target.id==='zoom')closeZoom();});
+document.addEventListener('click',e=>{const z=e.target.closest('#inspect .card[data-zoom]'); if(z) zoomCard(+z.dataset.zoom,z.dataset.ziid);});
+document.addEventListener('dblclick',e=>{const el=e.target.closest('.card[data-iid][data-cid]'); if(el){closeCtx();zoomCard(+el.dataset.cid,+el.dataset.iid);}});
+
+/* ---------- ลูกเต๋า D4 ---------- */
+function showDice(r){
+  $('#dice')?.remove();
+  const el=document.createElement('div'); el.id='dice'; el.className='dice-ov';
+  el.innerHTML=`<div class="d4wrap"><div class="d4"><span class="d4n">4</span></div><div class="d4cap">${esc(nameOf(r.uid))} ทอยลูกเต๋า D4…</div></div>`;
+  document.body.appendChild(el);
+  const n=$('.d4n',el), cap=$('.d4cap',el), die=$('.d4',el);
+  const iv=setInterval(()=>{n.textContent=1+Math.floor(Math.random()*4);},70);
+  setTimeout(()=>{clearInterval(iv); n.textContent=r.v; die.classList.add('land'); cap.innerHTML=`<b>${r.v}</b> → โบนัส +${r.v} Code`;},1300);
+  setTimeout(()=>{el.classList.add('out'); setTimeout(()=>el.remove(),500);},3300);
+}
+
+/* ---------- เต็มจอ + แท็บเครื่องมือด้านซ้าย ---------- */
+function toggleFS(){
+  if(document.fullscreenElement){document.exitFullscreen();return;}
+  const b=document.body, de=document.documentElement;
+  if(de.requestFullscreen) de.requestFullscreen().catch(()=>b.classList.toggle('fs')); else b.classList.toggle('fs');
+}
+document.addEventListener('fullscreenchange',()=>{
+  document.body.classList.toggle('fs',!!document.fullscreenElement);
+  if(!document.fullscreenElement) document.body.classList.remove('drawer-open');
+});
+$('#fsBtn').onclick=toggleFS;
+$('#drawerTab').onclick=()=>document.body.classList.toggle('drawer-open');
 document.addEventListener('mouseover',e=>{const el=e.target.closest('.card[data-iid]'); if(el&&S) inspect(el);});
 
 /* ---------------- ลากวางการ์ด ---------------- */
 const mineZone=z=>z&&seated&&(z.id==='hand'||z.closest('.half.me'));
 document.addEventListener('dragstart',e=>{const c=e.target.closest('.card[draggable="true"]'); if(!c) return;
-  dragIid=+c.dataset.iid; e.dataTransfer.setData('text/plain',String(dragIid)); e.dataTransfer.effectAllowed='move';});
+  dragIid=+c.dataset.iid; dragCid=c.dataset.cid; e.dataTransfer.setData('text/plain',String(dragIid)); e.dataTransfer.effectAllowed='move';});
 document.addEventListener('dragover',e=>{const z=e.target.closest('.zone,#hand'); if(mineZone(z)){e.preventDefault();z.classList.add('over');}});
 document.addEventListener('dragleave',e=>{e.target.closest?.('.zone,#hand')?.classList.remove('over');});
 document.addEventListener('drop',e=>{
+  const tc=e.target.closest('.card[data-iid]');          // ลากการ์ด Ship ไปวางบน Neurous = Link
+  if(tc&&seated&&tc.dataset.side==='me'&&['attack','protect'].includes(tc.dataset.zone)&&dragIid!=null&&+tc.dataset.iid!==dragIid
+     &&S.cards[dragCid]&&S.cards[dragCid].type==='ship'){
+    e.preventDefault(); $$('.over').forEach(x=>x.classList.remove('over'));
+    act('link',{iid:dragIid,target:+tc.dataset.iid,pay:autoPay}); dragIid=null; return;
+  }
   const z=e.target.closest('.zone,#hand'); if(!mineZone(z)) return; e.preventDefault();
   $$('.over').forEach(x=>x.classList.remove('over'));
   if(dragIid!=null) act('move',{iid:dragIid,to:z.dataset.zone,pay:autoPay}); dragIid=null;

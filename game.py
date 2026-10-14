@@ -12,6 +12,9 @@ LIMITS = {'attack': 4, 'protect': 3}
 MAX_CODE = 10
 COUNTER_DAMAGE = True     # แบบ Hearthstone: เป้าหมายสวนกลับด้วยค่า ATK ของตัวเอง (ตั้งเป็น False ถ้าไม่ต้องการให้สวนกลับ)
 NEUROUS = ('entity', 'partners')
+LINK_MAX = 3              # Ship ที่ Link เข้ากับ Neurous หนึ่งใบได้ไม่เกิน 3 ใบ
+DICE_TURNS = (3, 5, 7, 9) # เทิร์นที่ n ของผู้เล่นแต่ละคน ที่ได้ทอยลูกเต๋า D4 เป็นโค้ดโบนัส
+DICE_SIDES = 4
 HP_START = 8
 HAND_START = 4
 Z_TH = {'deck': 'Deck', 'hand': 'มือ', 'attack': 'Attack Zone', 'protect': 'Protect Zone',
@@ -41,12 +44,12 @@ def other(room, uid):
 
 def _inst(room, cid):
     room['seq'] += 1
-    return {'iid': room['seq'], 'cid': int(cid), 'up': False, 'tap': False, 'ctr': 0, 'dmg': 0}
+    return {'iid': room['seq'], 'cid': int(cid), 'up': False, 'tap': False, 'ctr': 0, 'dmg': 0, 'links': []}
 
 
 def _new_state():
     return {'first': None, 'turn': None, 'phase': 'setup', 'turn_no': 0, 'combat_no': 1,
-            'acts': [], 'attacked': [], 'gen_drawn': False, 'winner': None, 'p': {}}
+            'acts': [], 'attacked': [], 'roll': None, 'roll_seq': 0, 'winner': None, 'p': {}}
 
 
 def _build(room, p):
@@ -59,7 +62,7 @@ def _build(room, p):
     z = {k: [] for k in ZONES}
     z['deck'] = main
     room['state']['p'][p['uid']] = {
-        'z': z, 'code': 0,
+        'z': z, 'code': 0, 'turns': 0,
         'pre_partners': [_inst(room, c) for c in deck['partners']],
         'setup': {'placed': False, 'drew': False, 'mull': False, 'hp': False, 'ready': False},
     }
@@ -110,13 +113,13 @@ def view(room, viewer):
                players=[{k: p[k] for k in ('uid', 'name', 'avatar', 'online', 'sleeve')} for p in room['players']],
                log=room['log'][-80:], spectators=len(room['spectators']), state=None)
     if s:
-        st = {k: s[k] for k in ('first', 'turn', 'phase', 'turn_no', 'combat_no', 'acts', 'attacked', 'gen_drawn', 'winner')}
+        st = {k: s[k] for k in ('first', 'turn', 'phase', 'turn_no', 'combat_no', 'acts', 'attacked', 'roll', 'winner')}
         st['p'] = {}
         for uid, p in s['p'].items():
             owner = uid == viewer or reveal
             zs = {zn: ([_vis(c, zn, owner) for c in lst] if zn != 'deck' else len(lst))
                   for zn, lst in p['z'].items()}
-            st['p'][uid] = {'z': zs, 'code': p['code'], 'setup': p['setup']}
+            st['p'][uid] = {'z': zs, 'code': p['code'], 'turns': p['turns'], 'setup': p['setup']}
         out['state'] = st
     return out
 
@@ -135,6 +138,26 @@ def _hit(room, victim_uid, n, by_uid):
             _log(room, 'ระบบ', f"{seat(room, victim_uid)['name']} ไม่มี HP เหลือ → {seat(room, by_uid)['name']} ชนะ!")
             return
     _log(room, 'ระบบ', f"HP ของ {seat(room, victim_uid)['name']} เหลือ {len(z['hp'])}")
+
+
+def _eff(room, c):
+    """ค่าพลังจริงของ Neurous = ค่าพื้นฐาน + ผลรวมค่า Link ของ Ship ที่ลิงก์อยู่"""
+    info = room['cards'].get(str(c['cid']), {})
+    a, k, d = info.get('atk', 0), info.get('crit', 0), info.get('def', 0)
+    for ln in c.get('links', []):
+        li = room['cards'].get(str(ln['cid']), {})
+        a += li.get('link_atk', 0)
+        k += li.get('link_crit', 0)
+        d += li.get('link_def', 0)
+    return {'atk': max(0, a), 'crit': max(0, k), 'def': d}
+
+
+def _drop_links(z, c):
+    """Neurous ออกจากสนาม → Ship ที่ลิงก์อยู่ทั้งหมดลง Delect Zone"""
+    for ln in c.get('links', []):
+        ln['up'], ln['tap'] = True, False
+        z['delect'].append(ln)
+    c['links'] = []
 
 
 def find(me, iid):
@@ -262,41 +285,29 @@ def act(room, uid, d):
         L('พร้อมแล้ว')
         if opp and s['p'][opp['uid']]['setup']['ready']:
             s['phase'], s['turn'], s['turn_no'] = 'generate', s['first'], 1
+            s['p'][s['first']]['turns'] = 1
             _log(room, 'ระบบ', f"เริ่มเกม! เทิร์นของ {seat(room, s['first'])['name']}")
         return None, None
 
     # ----- ลำดับเทิร์น -----
-    if t in ('gen_draw', 'generate', 'phase', 'combat_act', 'undo_act', 'add_combat', 'end_turn', 'attack'):
+    if t in ('generate', 'phase', 'combat_act', 'undo_act', 'add_combat', 'end_turn', 'attack'):
         if s['phase'] == 'setup':
             return 'ยังอยู่ในขั้น Setup', None
         if not my_turn:
             return 'ไม่ใช่เทิร์นของคุณ', None
-    if t == 'gen_draw':          # Generate ขั้นที่ 1: จั่วการ์ด 1 ใบ
+    if t == 'generate':          # Generate: จั่วการ์ด 1 ใบ และได้รับ 2 Code ทันที (เทิร์น 3/5/7/9 ทอย D4 เป็นโบนัส)
         if s['phase'] != 'generate':
             return 'ไม่ได้อยู่ใน Generate Phase', None
-        if s['gen_drawn']:
-            return 'จั่วไปแล้ว ให้เลือกการ์ดที่จะทิ้ง', None
         got = _draw_n(me, 1)
-        s['gen_drawn'] = True
-        L('Generate: จั่วการ์ด 1 ใบ' if got else 'Generate: เด็คหมด จั่วไม่ได้')
-        return None, None
-    if t == 'generate':          # Generate ขั้นที่ 2: ทิ้งการ์ดบนมือ 1 ใบ แล้วรับ 2 Code
-        if s['phase'] != 'generate':
-            return 'ไม่ได้อยู่ใน Generate Phase', None
-        if not s['gen_drawn']:
-            return 'ต้องจั่วการ์ด 1 ใบก่อน จึงจะทิ้งการ์ดได้', None
         me['code'] = min(MAX_CODE, me['code'] + 2)
-        if z['hand']:
-            i = next((i for i, c in enumerate(z['hand']) if c['iid'] == d.get('iid')), None)
-            if i is None:
-                me['code'] -= 2
-                return 'เลือกการ์ดในมือที่จะทิ้ง', None
-            c = z['hand'].pop(i)
-            c['up'] = True
-            z['delect'].append(c)
-            L(f'Generate: ทิ้ง {_cname(room, c)} และได้ 2 Code (รวม {me["code"]})')
-        else:
-            L(f'Generate: ไม่มีการ์ดบนมือให้ทิ้ง ได้ 2 Code (รวม {me["code"]})')
+        msg = ('Generate: จั่วการ์ด 1 ใบ' if got else 'Generate: เด็คหมด จั่วไม่ได้') + ' และได้ 2 Code'
+        if me['turns'] in DICE_TURNS:
+            v = random.randint(1, DICE_SIDES)
+            s['roll_seq'] += 1
+            s['roll'] = {'id': s['roll_seq'], 'uid': uid, 'v': v, 'turn': me['turns'], 'ts': int(time.time() * 1000)}
+            me['code'] = min(MAX_CODE, me['code'] + v)
+            msg += f' · ทอยลูกเต๋า D4 ได้ {v} → โบนัส +{v} Code'
+        L(msg + f' (รวม {me["code"]})')
         s['phase'] = 'combat'
         return None, None
     if t == 'phase':
@@ -328,7 +339,8 @@ def act(room, uid, d):
         return None, None
     if t == 'end_turn':
         s['turn'] = opp['uid'] if opp else uid
-        s['phase'], s['combat_no'], s['acts'], s['attacked'], s['gen_drawn'] = 'generate', 1, [], [], False
+        s['phase'], s['combat_no'], s['acts'], s['attacked'] = 'generate', 1, [], []
+        s['p'][s['turn']]['turns'] += 1
         if opp:                                        # เริ่มเทิร์นใหม่: ตั้งการ์ดของผู้เล่นที่ได้เล่นให้ตรง
             for lst in s['p'][opp['uid']]['z'].values():
                 for c in lst:
@@ -358,15 +370,16 @@ def act(room, uid, d):
         ba = max(-9999, min(9999, int(d.get('atk_bonus', 0) or 0)))
         bd = max(-9999, min(9999, int(d.get('def_bonus', 0) or 0)))
         oz = s['p'][opp['uid']]['z']
-        atk = ai.get('atk', 0) + ba
+        ae = _eff(room, ac)
+        atk = ae['atk'] + ba
         an = ai.get('name', '?')
         if d.get('target') == 'player':
             if oz['protect']:
                 return 'ต้องทำให้ Protect Zone ของฝั่งตรงข้ามว่างก่อนจึงโจมตีผู้เล่นได้', None
-            dmg = max(1, ai.get('crit', 0))
+            dmg = max(1, ae['crit'])
             s['attacked'].append(ac['iid'])
             ac['tap'], ac['up'] = True, True
-            L(f"{an} โจมตี {opp['name']} โดยตรง (CRIT {ai.get('crit', 0)}) → HP −{dmg}")
+            L(f"{an} โจมตี {opp['name']} โดยตรง (CRIT {ae['crit']}) → HP −{dmg}")
             _hit(room, opp['uid'], dmg, uid)
             return None, None
         tc = tzone = None                     # เป้าหมาย: การ์ดใบไหนก็ได้บนสนามฝั่งตรงข้าม
@@ -380,7 +393,8 @@ def act(room, uid, d):
         ti = room['cards'].get(str(tc['cid']), {})
         if ti.get('type') not in NEUROUS:
             return 'เป้าหมายนี้โจมตีไม่ได้', None
-        full = ti.get('def', 0) + bd                       # DEF ทั้งหมดของเป้าหมาย (รวมโบนัส)
+        te = _eff(room, tc)
+        full = te['def'] + bd                              # DEF ทั้งหมดของเป้าหมาย (รวม Link และโบนัส)
         s['attacked'].append(ac['iid'])
         ac['tap'], ac['up'], tc['up'] = True, True, True
         before = full - tc['dmg']
@@ -390,19 +404,21 @@ def act(room, uid, d):
         msg = f"{an} (ATK {atk}) โจมตี {tn} (DEF {before}) → DEF เหลือ {max(after, 0)}"
         dead_t, dead_a = after <= 0, False
         if COUNTER_DAMAGE:
-            back = max(0, ti.get('atk', 0))
+            back = te['atk']
             ac['dmg'] += back
-            a_after = ai.get('def', 0) - ac['dmg']
+            a_after = ae['def'] - ac['dmg']
             msg += f" · {tn} สวนกลับ {back} → DEF ของ {an} เหลือ {max(a_after, 0)}"
             dead_a = a_after <= 0
         if dead_t:
             oz[tzone].remove(tc)
             tc['tap'], tc['dmg'] = False, 0
+            _drop_links(oz, tc)
             oz['delect'].append(tc)
             msg += f" · {tn} ถูกทำลาย"
         if dead_a:
             z[azone].remove(ac)
             ac['tap'], ac['dmg'] = False, 0
+            _drop_links(z, ac)
             z['delect'].append(ac)
             msg += f" · {an} ถูกทำลาย"
         L(msg)
@@ -443,8 +459,43 @@ def act(room, uid, d):
         L('ยอมแพ้')
         return None, None
 
+    if t == 'unlink':            # ถอด Ship ออกจาก Neurous → Delect Zone หรือมือ
+        tgt = next((x for zn in ('attack', 'protect') for x in z[zn] if x['iid'] == d.get('target')), None)
+        ln = next((x for x in (tgt['links'] if tgt else []) if x['iid'] == d.get('iid')), None)
+        if not ln:
+            return 'ไม่พบ Link นี้', None
+        to = d.get('to') if d.get('to') in ('hand', 'delect') else 'delect'
+        tgt['links'].remove(ln)
+        ln['up'] = to != 'hand'
+        z[to].append(ln)
+        L(f"ถอด Link {_cname(room, ln)} ออกจาก {_cname(room, tgt)} → {Z_TH[to]}")
+        return None, None
     iid = d.get('iid')
     fr, i, c = find(me, iid)
+    if t == 'link':              # Link: เอา Ship ไปติดกับ Neurous บนสนาม (ได้ไม่เกิน LINK_MAX ใบต่อ Neurous)
+        if not c:
+            return 'ไม่พบการ์ด', None
+        si = room['cards'].get(str(c['cid']), {})
+        if si.get('type') != 'ship':
+            return 'เฉพาะการ์ด Ship เท่านั้นที่ Link ได้', None
+        if fr not in ('hand', 'server', 'partners', 'attack', 'protect'):
+            return 'ย้าย Ship มาที่มือหรือสนามก่อน', None
+        tgt = next((x for zn in ('attack', 'protect') for x in z[zn] if x['iid'] == d.get('target')), None)
+        if not tgt or tgt is c:
+            return 'เลือก Neurous บนสนามของคุณเป็นเป้าหมาย Link', None
+        if room['cards'].get(str(tgt['cid']), {}).get('type') not in NEUROUS:
+            return 'Link ได้เฉพาะกับ Neurous', None
+        if len(tgt['links']) >= LINK_MAX:
+            return f'Link ได้ไม่เกิน {LINK_MAX} ใบต่อ Neurous', None
+        cost = si.get('cost', 0) if d.get('pay') and fr == 'hand' else 0
+        if cost > me['code']:
+            return f'Code ไม่พอ (ต้องใช้ {cost}, มี {me["code"]})', None
+        me['code'] -= cost
+        z[fr].pop(i)
+        c['up'], c['tap'], c['dmg'] = True, False, 0
+        tgt['links'].append(c)
+        L(f"Link {si.get('name', '?')} → {_cname(room, tgt)} ({len(tgt['links'])}/{LINK_MAX})" + (f' (จ่าย {cost} Code)' if cost else ''))
+        return None, None
     if t in ('tap', 'flip', 'ctr', 'move', 'dmg') and not c:
         return 'ไม่พบการ์ด', None
     if t == 'tap':
@@ -456,9 +507,10 @@ def act(room, uid, d):
     if t == 'dmg':
         c['dmg'] = max(0, c['dmg'] + int(d.get('delta', 1)))
         info = room['cards'].get(str(c['cid']), {})
-        if fr in ('attack', 'protect') and c['dmg'] > 0 and c['dmg'] >= info.get('def', 0):
+        if fr in ('attack', 'protect') and c['dmg'] > 0 and c['dmg'] >= _eff(room, c)['def']:
             z[fr].remove(c)                       # DEF หมด = ถูกทำลาย ลง Delect Zone
             c['tap'], c['up'], c['dmg'] = False, True, 0
+            _drop_links(z, c)
             z['delect'].append(c)
             L(f"{info.get('name', '?')} ถูกทำลาย (ดาเมจถึงค่า DEF)")
         return None, None
@@ -484,6 +536,8 @@ def act(room, uid, d):
             return f'Code ไม่พอ (ต้องใช้ {cost}, มี {me["code"]})', None
         me['code'] -= cost
         z[fr].pop(i)
+        if fr in ('attack', 'protect') and to not in ('attack', 'protect'):
+            _drop_links(z, c)
         c['tap'] = False
         c['dmg'] = 0
         c['up'] = bool(d['up']) if 'up' in d else (to not in ('deck', 'hand', 'hp'))
