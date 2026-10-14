@@ -6,3 +6,5 @@ venv/
 *.db
 static/uploads/*/*
 !static/uploads/*/.gitkeep
+.venv/
+set_password.py
