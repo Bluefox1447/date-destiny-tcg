@@ -1,0 +1,19 @@
+{% extends 'base.html' %}{% block title %}โปรไฟล์{% endblock %}
+{% block content %}
+<div class="wrap" style="max-width:640px">
+  <h1 style="font-size:2rem">โปรไฟล์ของฉัน</h1>
+  <form method="post" enctype="multipart/form-data" class="box">
+    <div class="row" style="margin-bottom:14px">
+      {% if current_user.avatar %}<img class="av" style="width:64px;height:64px" src="{{ current_user.avatar }}">{% else %}<span class="av" style="width:64px;height:64px;font-size:1.6rem">{{ current_user.username[:1]|upper }}</span>{% endif %}
+      <div><div class="mono">{{ current_user.email }}</div><span class="pill {{ 'warn' if current_user.is_admin else '' }}">{{ 'Admin' if current_user.is_admin else 'ผู้เล่น' }}</span></div>
+    </div>
+    <label class="f"><span>ชื่อผู้ใช้</span><input name="username" value="{{ current_user.username }}" maxlength="30"></label>
+    <label class="f"><span>แนะนำตัว</span><textarea name="bio" rows="2" maxlength="300">{{ current_user.bio }}</textarea></label>
+    <label class="f"><span>รูปโปรไฟล์</span><input type="file" name="avatar" accept="image/*"></label>
+    <h3>เปลี่ยนรหัสผ่าน</h3>
+    {% if current_user.password_hash %}<label class="f"><span>รหัสผ่านเดิม</span><input type="password" name="old_password"></label>{% endif %}
+    <label class="f"><span>รหัสผ่านใหม่</span><input type="password" name="new_password" minlength="8"></label>
+    <button class="btn pri">บันทึกโปรไฟล์</button>
+  </form>
+</div>
+{% endblock %}

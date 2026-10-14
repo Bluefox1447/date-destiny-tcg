@@ -1,0 +1,13 @@
+{% extends 'base.html' %}{% block title %}ขอสิทธิ์ Admin{% endblock %}
+{% block content %}
+<div class="auth box hex">
+  <h2>ขอสิทธิ์ Admin</h2>
+  {% if current_user.is_admin %}<p>บัญชีนี้เป็น Admin อยู่แล้ว</p><a class="btn pri" href="{{ url_for('admin_cards') }}">ไปหน้าจัดการระบบ</a>
+  {% elif not enabled %}<p class="mut">เซิร์ฟเวอร์ยังไม่ได้ตั้งค่า <span class="mono">ADMIN_CLAIM_TOKEN</span> ในตัวแปรสภาพแวดล้อม</p>
+  {% else %}
+  <p class="mut">ใส่รหัสลับ <span class="mono">ADMIN_CLAIM_TOKEN</span> (ดูได้ที่ Render → Environment)</p>
+  <form method="post"><label class="f"><span>รหัสลับ</span><input type="password" name="token" required autofocus></label>
+    <button class="btn pri">ยืนยัน</button></form>
+  {% endif %}
+</div>
+{% endblock %}

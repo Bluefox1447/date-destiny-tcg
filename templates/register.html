@@ -1,0 +1,19 @@
+{% extends 'base.html' %}{% block title %}สมัครสมาชิก{% endblock %}
+{% block content %}
+<div class="auth box hex">
+  <h2>สมัครสมาชิก</h2>
+  <p class="mut">เราจะส่งรหัสยืนยัน 6 หลักไปที่อีเมลของคุณ</p>
+  <form method="post">
+    <label class="f"><span>อีเมล</span><input type="email" name="email" required autofocus></label>
+    <label class="f"><span>ชื่อผู้ใช้</span><input name="username" minlength="2" maxlength="30" required></label>
+    <label class="f"><span>รหัสผ่าน (อย่างน้อย 8 ตัวอักษร)</span><input type="password" name="password" minlength="8" required></label>
+    <button class="btn pri" style="width:100%;justify-content:center">ส่งรหัสยืนยัน</button>
+  </form>
+  <div class="sep">หรือสมัครด้วย</div>
+  <div class="row">
+    {% if 'google' in social %}<a class="btn grow" style="justify-content:center" href="{{ url_for('oauth_login', provider='google') }}">Google</a>{% endif %}
+    {% if 'discord' in social %}<a class="btn grow" style="justify-content:center" href="{{ url_for('oauth_login', provider='discord') }}">Discord</a>{% endif %}
+  </div>
+  <p class="mut mt">มีบัญชีแล้ว? <a href="{{ url_for('login') }}">เข้าสู่ระบบ</a></p>
+</div>
+{% endblock %}

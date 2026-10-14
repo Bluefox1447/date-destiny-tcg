@@ -1,0 +1,43 @@
+{% extends 'base.html' %}{% block title %}จัดเด็ค{% endblock %}
+{% block content %}
+<div class="dbwrap">
+  <div class="dbbar">
+    <input id="dname" maxlength="80" placeholder="ชื่อเด็ค" style="max-width:260px;font-weight:600">
+    <select id="dsleeve" title="Sleeve (หลังการ์ด)" style="max-width:190px"><option value="">Sleeve เริ่มต้น</option>{% for s in sleeves %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}</select>
+    <div class="card mini back" id="slprev" style="--cw:30px"><i></i></div>
+    <button class="btn pri" id="save">บันทึก</button>
+    <button class="btn dng" id="clear">ล้างเด็ค</button>
+    <button class="btn" id="undo">Undo</button><button class="btn" id="redo">Redo</button>
+    <button class="btn" id="sort">เรียง: ค่าคอส</button>
+    <button class="btn" id="copy">คัดลอกโค้ด</button>
+    <label class="row" style="gap:6px"><input type="checkbox" id="dpub"> แชร์สาธารณะ</label>
+    <a class="btn right" href="{{ url_for('decks') }}">กลับ</a>
+  </div>
+  <div class="dbgrid">
+    <aside class="dbleft">
+      <div id="inspect"></div>
+      <div id="info"></div>
+      <label class="f" style="margin-top:12px"><span>คำอธิบายเด็ค</span><textarea id="ddesc" rows="3" maxlength="400"></textarea></label>
+    </aside>
+    <section class="dbmid">
+      <div class="sec"><div class="sech"><b>เด็คหลัก</b><span class="cnt mono" id="cm"></span><span class="chips" id="chips"></span></div><div class="dgrid" id="lm"></div></div>
+      <div class="sec"><div class="sech"><b>Partners ใน Partners Zone</b><span class="cnt mono" id="cp"></span></div><div class="dgrid" id="lp"></div></div>
+      <div id="issues" class="row"></div>
+    </section>
+    <aside class="dbright">
+      <input id="q" placeholder="ค้นหาชื่อการ์ด / เอฟเฟค…">
+      <div class="row" style="margin:8px 0 12px">
+        <select id="ft" style="flex:1"><option value="">ทุกประเภท</option>{% for v,l in TYPES %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select>
+        <select id="fc" style="flex:1"><option value="">ทุกสี</option>{% for v,l in COLORS %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select>
+        <select id="fo" style="flex:1"><option value="cost">ค่าคอส</option><option value="name">ชื่อ</option><option value="code">รหัส</option></select>
+      </div>
+      <div class="pool2" id="pool"></div>
+    </aside>
+  </div>
+</div>
+<script id="sleeves" type="application/json">{{ sleeves|tojson }}</script>
+<script id="deckdata" type="application/json">{{ deck|tojson }}</script>
+{% endblock %}
+{% block scripts %}<script>window.DECK_SIZE={{ DECK_SIZE }};window.MAX_COPIES={{ MAX_COPIES }};
+window.CLABEL={{ dict(COLORS)|tojson }};window.TLABEL={{ dict(TYPES)|tojson }};</script>
+<script src="{{ url_for('static', filename='js/deckbuilder.js') }}"></script>{% endblock %}

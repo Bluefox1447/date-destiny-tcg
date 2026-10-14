@@ -1,0 +1,39 @@
+{% extends 'base.html' %}{% block title %}เด็คของฉัน{% endblock %}
+{% block content %}
+<div class="wrap">
+  <div class="row"><h1 style="font-size:2rem">เด็คของฉัน</h1><a class="btn pri right" href="{{ url_for('deck_edit') }}">สร้างเด็คใหม่</a></div>
+  <form method="post" action="{{ url_for('deck_import') }}" class="box row" style="margin:14px 0">
+    <b>นำเข้าเด็ค</b><input name="code" placeholder="วางโค้ดเด็คที่เพื่อนแชร์ให้" class="grow" required><button class="btn">นำเข้า</button>
+  </form>
+  <div class="cols">
+    {% for d in mine %}
+    <div class="box">
+      <div class="row"><h3 style="margin:0" class="grow">{{ d.name }}</h3>{% if d.public %}<span class="pill ok">สาธารณะ</span>{% endif %}</div>
+      <p class="mut" style="margin:4px 0 8px">เด็คหลัก {{ d.size }}/{{ DECK_SIZE }} · Partners {{ d.partners|length }}/4</p>
+      {% for i in issues[d.id] %}<div class="pill warn" style="margin:0 4px 4px 0">{{ i }}</div>{% endfor %}
+      {% if not issues[d.id] %}<span class="pill ok">พร้อมเล่น</span>{% endif %}
+      <div class="row mt">
+        <a class="btn sm pri" href="{{ url_for('deck_edit', did=d.id) }}">แก้ไข</a>
+        <button class="btn sm" onclick="copyCode({{ d.id }})">คัดลอกโค้ด</button>
+        <form method="post" action="{{ url_for('deck_public', did=d.id) }}"><button class="btn sm">{{ 'ซ่อน' if d.public else 'แชร์สาธารณะ' }}</button></form>
+        <form method="post" action="{{ url_for('deck_copy', did=d.id) }}"><button class="btn sm">ทำสำเนา</button></form>
+        <form method="post" action="{{ url_for('deck_delete', did=d.id) }}" onsubmit="return confirm('ลบเด็คนี้?')"><button class="btn sm dng">ลบ</button></form>
+      </div>
+    </div>
+    {% else %}<p class="mut">ยังไม่มีเด็ค กด "สร้างเด็คใหม่" หรือนำเข้าโค้ดจากเพื่อน</p>{% endfor %}
+  </div>
+  <h2 class="mt">เด็คที่ผู้เล่นอื่นแชร์</h2>
+  <div class="cols">
+    {% for d in pub %}
+    <div class="box"><h3 style="margin:0">{{ d.name }}</h3>
+      <p class="mut" style="margin:4px 0">โดย {{ d.owner.username }} · {{ d.size }} ใบ</p><p>{{ d.description }}</p>
+      <div class="row"><form method="post" action="{{ url_for('deck_copy', did=d.id) }}"><button class="btn sm pri">คัดลอกไปคลังของฉัน</button></form>
+      <button class="btn sm" onclick="copyCode({{ d.id }})">คัดลอกโค้ด</button></div></div>
+    {% else %}<p class="mut">ยังไม่มีใครแชร์เด็ค</p>{% endfor %}
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}<script>
+async function copyCode(id){const r=await fetch('/api/decks/'+id+'/code');const j=await r.json();
+  try{await navigator.clipboard.writeText(j.code);toast('คัดลอกโค้ดเด็คแล้ว ส่งให้เพื่อนได้เลย','ok')}catch(e){prompt('คัดลอกโค้ดนี้',j.code)}}
+</script>{% endblock %}

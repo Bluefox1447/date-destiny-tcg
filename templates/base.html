@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}Date Destiny TCG{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Kanit:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body {% block bodyattr %}{% endblock %}>
+<nav class="nav"><div class="in">
+  <a class="logo" href="{{ url_for('index') }}"><i>DD</i>Date Destiny TCG</a>
+  <a class="l {{ 'on' if request.endpoint=='cards' }}" href="{{ url_for('cards') }}">คลังการ์ด</a>
+  {% if current_user.is_authenticated %}
+  <a class="l {{ 'on' if request.endpoint in ('decks','deck_edit') }}" href="{{ url_for('decks') }}">เด็คของฉัน</a>
+  <a class="l {{ 'on' if request.endpoint in ('rooms','room_play') }}" href="{{ url_for('rooms') }}">ห้องเล่น</a>
+  {% if current_user.is_admin %}
+  <a class="l {{ 'on' if request.path.startswith('/admin') }}" href="{{ url_for('admin_cards') }}">จัดการระบบ</a>
+  {% endif %}
+  <span class="grow"></span>
+  <a class="l" href="{{ url_for('profile') }}" style="display:flex;gap:8px;align-items:center">
+    {% if current_user.avatar %}<img class="av" src="{{ current_user.avatar }}" alt="">{% else %}<span class="av">{{ current_user.username[:1]|upper }}</span>{% endif %}
+    {{ current_user.username }}</a>
+  <a class="l" href="{{ url_for('logout') }}">ออกจากระบบ</a>
+  {% else %}
+  <span class="grow"></span>
+  <a class="l" href="{{ url_for('login') }}">เข้าสู่ระบบ</a>
+  <a class="btn pri sm" href="{{ url_for('register') }}">สมัครสมาชิก</a>
+  {% endif %}
+</div></nav>
+<div class="flash" id="flash">{% for cat, msg in get_flashed_messages(with_categories=true) %}<div class="{{ cat }}">{{ msg }}</div>{% endfor %}</div>
+{% block content %}{% endblock %}
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body></html>

@@ -1,0 +1,14 @@
+{% extends 'base.html' %}{% block title %}ยืนยันอีเมล{% endblock %}
+{% block content %}
+<div class="auth box hex">
+  <h2>ยืนยันอีเมล</h2>
+  <p class="mut">กรอกรหัส 6 หลักที่ส่งไปที่ <b>{{ email or 'อีเมลของคุณ' }}</b></p>
+  <form method="post">
+    <input type="hidden" name="email" value="{{ email }}">
+    <label class="f"><span>รหัสยืนยัน</span><input name="code" inputmode="numeric" pattern="\d{6}" maxlength="6" class="mono" style="font-size:1.6rem;letter-spacing:.4em;text-align:center" required autofocus></label>
+    <button class="btn pri" style="width:100%;justify-content:center">ยืนยัน</button>
+  </form>
+  <form method="post" action="{{ url_for('resend') }}" class="mt"><input type="hidden" name="email" value="{{ email }}">
+    <button class="btn sm">ส่งรหัสอีกครั้ง</button></form>
+</div>
+{% endblock %}

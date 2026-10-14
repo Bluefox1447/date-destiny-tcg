@@ -1,0 +1,14 @@
+{% extends 'base.html' %}{% block title %}จัดการผู้ใช้{% endblock %}
+{% block content %}
+<div class="wrap">
+  {% include 'admin/_tabs.html' %}
+  <form class="row" style="margin-bottom:14px"><input name="q" value="{{ q }}" placeholder="ค้นหาอีเมลหรือชื่อผู้ใช้" style="max-width:360px"><button class="btn">ค้นหา</button></form>
+  <div class="box" style="overflow:auto"><table>
+    <tr><th>ผู้ใช้</th><th>อีเมล</th><th>สิทธิ์</th><th>สถานะ</th><th></th></tr>
+    {% for u in users %}<tr><td>{{ u.username }}</td><td class="mono">{{ u.email }}</td>
+      <td><span class="pill {{ 'warn' if u.is_admin }}">{{ u.role }}</span></td>
+      <td>{% if u.banned %}<span class="pill err">ถูกระงับ</span>{% elif u.verified %}<span class="pill ok">ยืนยันแล้ว</span>{% else %}<span class="pill">รอยืนยัน</span>{% endif %}</td>
+      <td style="text-align:right"><a class="btn sm" href="{{ url_for('admin_user_edit', uid=u.id) }}">แก้ไขโปรไฟล์</a></td></tr>{% endfor %}
+  </table></div>
+</div>
+{% endblock %}

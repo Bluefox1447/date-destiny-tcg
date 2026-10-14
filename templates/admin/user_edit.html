@@ -1,0 +1,18 @@
+{% extends 'base.html' %}{% block title %}แก้ไขผู้ใช้{% endblock %}
+{% block content %}
+<div class="wrap" style="max-width:640px">
+  {% include 'admin/_tabs.html' %}
+  <form method="post" class="box">
+    <h2>แก้ไขโปรไฟล์: {{ u.username }}</h2><p class="mono mut">{{ u.email }}</p>
+    <label class="f"><span>ชื่อผู้ใช้</span><input name="username" value="{{ u.username }}" maxlength="40"></label>
+    <label class="f"><span>แนะนำตัว</span><textarea name="bio" rows="2" maxlength="300">{{ u.bio }}</textarea></label>
+    <label class="f"><span>สิทธิ์</span><select name="role" {{ 'disabled' if u.id==current_user.id }}><option value="user" {{ 'selected' if not u.is_admin }}>ผู้เล่น (user)</option><option value="admin" {{ 'selected' if u.is_admin }}>ผู้ดูแล (admin)</option></select></label>
+    <label class="row" style="margin-bottom:10px"><input type="checkbox" name="verified" {{ 'checked' if u.verified }}> ยืนยันอีเมลแล้ว</label>
+    <label class="row" style="margin-bottom:10px"><input type="checkbox" name="banned" {{ 'checked' if u.banned }} {{ 'disabled' if u.id==current_user.id }}> ระงับบัญชี</label>
+    <label class="row" style="margin-bottom:14px"><input type="checkbox" name="clear_avatar"> ลบรูปโปรไฟล์</label>
+    <label class="f"><span>ตั้งรหัสผ่านใหม่ (เว้นว่างถ้าไม่เปลี่ยน)</span><input type="password" name="new_password" minlength="8"></label>
+    <div class="row"><button class="btn pri">บันทึก</button><a class="btn" href="{{ url_for('admin_users') }}">กลับ</a></div>
+  </form>
+  {% if u.id != current_user.id %}<form method="post" action="{{ url_for('admin_user_delete', uid=u.id) }}" class="mt" onsubmit="return confirm('ลบผู้ใช้และเด็คทั้งหมดของเขา?')"><button class="btn dng">ลบผู้ใช้นี้</button></form>{% endif %}
+</div>
+{% endblock %}

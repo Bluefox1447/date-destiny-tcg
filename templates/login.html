@@ -1,0 +1,18 @@
+{% extends 'base.html' %}{% block title %}เข้าสู่ระบบ{% endblock %}
+{% block content %}
+<div class="auth box hex">
+  <h2>เข้าสู่ระบบ</h2>
+  <form method="post">
+    <label class="f"><span>อีเมล</span><input type="email" name="email" required autofocus></label>
+    <label class="f"><span>รหัสผ่าน</span><input type="password" name="password" required></label>
+    <button class="btn pri" style="width:100%;justify-content:center">เข้าสู่ระบบ</button>
+  </form>
+  <div class="sep">หรือ</div>
+  <div class="row">
+    {% if 'google' in social %}<a class="btn grow" style="justify-content:center" href="{{ url_for('oauth_login', provider='google') }}">Google</a>{% endif %}
+    {% if 'discord' in social %}<a class="btn grow" style="justify-content:center" href="{{ url_for('oauth_login', provider='discord') }}">Discord</a>{% endif %}
+    {% if not social %}<p class="mut" style="margin:0">ตั้งค่า GOOGLE_/DISCORD_ ใน .env เพื่อเปิดปุ่มล็อคอินภายนอก</p>{% endif %}
+  </div>
+  <p class="mut mt">ยังไม่มีบัญชี? <a href="{{ url_for('register') }}">สมัครสมาชิก</a></p>
+</div>
+{% endblock %}

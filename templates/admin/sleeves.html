@@ -1,0 +1,29 @@
+{% extends 'base.html' %}{% block title %}จัดการ Sleeve{% endblock %}
+{% block content %}
+<div class="wrap">
+  {% include 'admin/_tabs.html' %}
+  <div class="cols" style="grid-template-columns:minmax(300px,380px) 1fr">
+    <form method="post" enctype="multipart/form-data" class="box">
+      <h2>เพิ่ม Sleeve (หลังการ์ด)</h2>
+      <label class="f"><span>ชื่อ Sleeve</span><input name="name" maxlength="80" placeholder="เช่น Default, Aurora" required></label>
+      <label class="f"><span>รูปหลังการ์ด (สัดส่วน 5:7 เช่น 750×1050)</span><input type="file" name="image" accept="image/*" id="slfile" required></label>
+      <div style="display:grid;justify-items:center;margin-bottom:14px"><div class="card back" id="slpv" style="--cw:120px"><i>DD</i></div></div>
+      <label class="row" style="margin-bottom:14px"><input type="checkbox" name="is_default"> ใช้เป็นหลังการ์ดเริ่มต้นของระบบ</label>
+      <button class="btn pri">เพิ่ม Sleeve</button>
+      <p class="mut" style="font-size:.85rem;margin-top:10px">หลังการ์ดเริ่มต้นจะใช้กับเด็คที่ผู้เล่นไม่ได้เลือก Sleeve เอง ผู้เล่นเลือก Sleeve ได้ในหน้าจัดเด็ค</p>
+    </form>
+    <div class="pool" style="justify-items:center;align-content:start">
+      {% for s in items %}
+      <div class="tile"><div class="card img" style="--cw:150px;background-image:url('{{ s.image }}')"></div>
+        <b>{{ s.name }}</b>{% if s.is_default %}<span class="pill ok">เริ่มต้น</span>{% endif %}
+        <div class="acts">{% if not s.is_default %}<form method="post" action="{{ url_for('admin_sleeve_default', sid=s.id) }}"><button class="btn sm">ตั้งเป็นเริ่มต้น</button></form>{% endif %}
+        <form method="post" action="{{ url_for('admin_sleeve_delete', sid=s.id) }}" onsubmit="return confirm('ลบ Sleeve นี้?')"><button class="btn sm dng">ลบ</button></form></div></div>
+      {% else %}<p class="mut">ยังไม่มี Sleeve อัปโหลดรูปหลังการ์ดอันแรกทางซ้ายได้เลย</p>{% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}<script>
+document.getElementById('slfile').addEventListener('change',e=>{const f=e.target.files[0],p=document.getElementById('slpv');
+  if(f){p.classList.add('img');p.innerHTML='';p.style.backgroundImage=`url('${URL.createObjectURL(f)}')`}});
+</script>{% endblock %}

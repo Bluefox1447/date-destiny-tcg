@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="wrap">
+  <section class="hero">
+    <div>
+      <h1>เก็บ Code ตั้งแนวรับ<br>แล้วบุกทะลุ Firewall</h1>
+      <p class="lead">Date Destiny TCG เกมการ์ดสองคนที่ Neurous ต้องสู้กันบน Attack Zone และ Protect Zone จัดเด็ค แชร์เด็ค แล้วเปิดห้องเล่นกับเพื่อนได้ในเบราว์เซอร์</p>
+      <div class="row mt">
+        <a class="btn pri" href="{{ url_for('rooms') }}">เปิดห้องเล่น</a>
+        <a class="btn" href="{{ url_for('cards') }}">ดูการ์ดทั้งหมด ({{ n_cards }})</a>
+      </div>
+    </div>
+    <div class="mini-mat" aria-hidden="true">
+      <div class="rowz"><div class="z">Delect</div><div class="z t">Protect Zone</div><div class="z">Partners</div></div>
+      <div class="rowz"><div class="z">Deck</div><div class="z t">Attack Zone</div><div class="z">Firewall</div></div>
+      <div class="tr"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>10</span><span>5</span><span>4</span><span>3</span><span>2</span><span>1</span></div>
+      <div class="rowz"><div class="z">Firewall</div><div class="z t">Attack Zone</div><div class="z">Server</div></div>
+      <div class="rowz"><div class="z">Partners</div><div class="z t">Protect Zone</div><div class="z">Deck</div></div>
+    </div>
+  </section>
+  <h2>ข่าวอัปเดต</h2>
+  <div class="news">
+    {% for n in news %}
+    <article>
+      <div class="row"><h3 style="margin:0">{{ n.title }}</h3>{% if n.pinned %}<span class="pill warn">ปักหมุด</span>{% endif %}
+        <span class="mut right mono" style="font-size:.8rem">{{ n.created.strftime('%d/%m/%Y') }}</span></div>
+      {% if n.image %}<img src="{{ n.image }}" alt="">{% endif %}
+      <div class="body">{{ n.body }}</div>
+    </article>
+    {% else %}<p class="mut">ยังไม่มีข่าว {% if current_user.is_admin %}<a href="{{ url_for('admin_news') }}">เพิ่มข่าวแรก</a>{% endif %}</p>{% endfor %}
+  </div>
+</div>
+{% endblock %}

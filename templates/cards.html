@@ -1,0 +1,57 @@
+{% extends 'base.html' %}{% block title %}คลังการ์ด{% endblock %}
+{% block content %}
+<div class="wrap">
+  <div class="row"><h1 style="font-size:2rem">คลังการ์ด</h1><span class="mut" id="count"></span>
+    {% if current_user.is_authenticated and current_user.is_admin %}<a class="btn pri right" href="{{ url_for('admin_card_form') }}">เพิ่มการ์ด</a>{% endif %}</div>
+  <div class="filters">
+    <input id="q" placeholder="ค้นหาชื่อ เอฟเฟค หรือเซิร์ฟเวอร์">
+    <select id="ft"><option value="">ทุกประเภท</option>{% for v,l in TYPES %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select>
+    <select id="fc"><option value="">ทุกสี</option>{% for v,l in COLORS %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select>
+    <select id="fo"><option value="code">เรียงตามรหัส</option><option value="cost">เรียงตามค่าคอส</option><option value="name">เรียงตามชื่อ</option></select>
+  </div>
+  <div class="pool" id="pool"></div>
+</div>
+<div class="modal hide" id="modal">
+  <button class="navbtn l" id="prev" aria-label="การ์ดก่อนหน้า">&#10094;</button>
+  <button class="navbtn r" id="next" aria-label="การ์ดถัดไป">&#10095;</button>
+  <div class="dm" role="dialog" aria-modal="true">
+    <button class="dm-x" id="mclose" aria-label="ปิด">&#10005;</button>
+    <header class="dm-h"><div class="dm-meta"><span id="dCode" class="mono"></span><i></i><span id="dType"></span></div><h2 id="dName"></h2></header>
+    <div class="dm-b"><div class="dm-card" id="dCard"></div><div class="dm-info" id="dInfo"></div></div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}<script>
+const CLABEL={{ dict(COLORS)|tojson }}, TLABEL={{ dict(TYPES)|tojson }};
+let ALL=[], LIST=[], IDX=-1;
+const $=s=>document.querySelector(s);
+function draw(){
+  const q=$('#q').value.toLowerCase(),t=$('#ft').value,c=$('#fc').value,o=$('#fo').value;
+  let l=ALL.filter(x=>(!t||x.type===t)&&(!c||x.color===c)&&(!q||(x.name+x.effect+x.server+x.code).toLowerCase().includes(q)));
+  l.sort((a,b)=>o==='cost'?a.cost-b.cost||a.name.localeCompare(b.name):o==='name'?a.name.localeCompare(b.name):a.code.localeCompare(b.code));
+  LIST=l; $('#count').textContent=l.length+' ใบ';
+  $('#pool').innerHTML=l.length?l.map((x,i)=>`<div class="tile" data-i="${i}">${cardHTML(x)}</div>`).join(''):'<p class="mut">ไม่พบการ์ดที่ตรงกับตัวกรอง</p>';
+}
+function row(k,v){return `<div class="kv"><b>${k}</b><span>${v}</span></div>`}
+function show(i){
+  if(!LIST.length) return; IDX=(i+LIST.length)%LIST.length; const c=LIST[IDX];
+  $('#dCode').textContent=c.code||''; $('#dType').textContent=TLABEL[c.type]||c.type; $('#dName').textContent=c.name;
+  $('#dCard').innerHTML=cardHTML(c,{big:true});
+  let h='<div class="kvs">'+row('ค่าคอส (Cost)',c.cost)+row('สี (Color)',esc(CLABEL[c.color]||c.color));
+  if(c.type==='entity'||c.type==='partners')
+    h+=row('พลังโจมตี (ATK)',c.atk)+row('คริ (CRIT)',c.crit)+row('ป้องกัน (DEF)',c.def)+row('เซิร์ฟเวอร์',esc(c.server)||'-');
+  if(c.type==='ship') h+=row('Link 1 · โจมตี',c.link_atk)+row('Link 2 · คริ',c.link_crit)+row('Link 3 · ป้องกัน',c.link_def);
+  h+='</div><div class="kv one"><b>ประเภท (Type)</b><span>'+esc(TLABEL[c.type]||c.type)+'</span></div>'
+   +'<div class="kv one"><b>เอฟเฟค (Effect)</b><span class="eff">'+(esc(c.effect)||'-')+'</span></div>'
+   +'<div class="kv one"><b>รหัสการ์ด</b><span class="mono">'+esc(c.code)+'</span></div>';
+  $('#dInfo').innerHTML=h; document.querySelector('.dm-b').classList.toggle('land',c.type==='server'); $('#modal').classList.remove('hide'); document.body.style.overflow='hidden';
+}
+function closeM(){ $('#modal').classList.add('hide'); document.body.style.overflow=''; }
+fetch('/api/cards').then(r=>r.json()).then(d=>{ALL=d;draw()});
+['q','ft','fc','fo'].forEach(i=>$('#'+i).addEventListener('input',draw));
+$('#pool').addEventListener('click',e=>{const t=e.target.closest('.tile'); if(t) show(+t.dataset.i)});
+$('#prev').onclick=()=>show(IDX-1); $('#next').onclick=()=>show(IDX+1); $('#mclose').onclick=closeM;
+$('#modal').addEventListener('click',e=>{if(e.target.id==='modal')closeM()});
+document.addEventListener('keydown',e=>{ if($('#modal').classList.contains('hide')) return;
+  if(e.key==='Escape') closeM(); else if(e.key==='ArrowLeft') show(IDX-1); else if(e.key==='ArrowRight') show(IDX+1); });
+</script>{% endblock %}

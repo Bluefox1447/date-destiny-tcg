@@ -1,0 +1,59 @@
+{% extends 'base.html' %}{% block title %}{{ 'แก้ไข' if card and card.id else 'เพิ่ม' }}การ์ด{% endblock %}
+{% block content %}
+<div class="wrap">
+  {% include 'admin/_tabs.html' %}
+  <div class="builder" style="grid-template-columns:1fr 340px">
+    <form method="post" enctype="multipart/form-data" class="box" id="cf">
+      <h2>{{ 'แก้ไขการ์ด' if card and card.id else 'เพิ่มการ์ดใหม่' }}</h2>
+      {% set c = card %}
+      <div class="cols" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+        <label class="f"><span>ประเภทการ์ด</span><select name="type" id="ftype">{% for v,l in TYPES %}<option value="{{ v }}" {{ 'selected' if c and c.type==v }}>{{ l }}</option>{% endfor %}</select></label>
+        <label class="f"><span>ชื่อการ์ด</span><input name="name" id="fname" value="{{ c.name if c else '' }}" required maxlength="80"></label>
+        <label class="f"><span>สี</span><select name="color" id="fcolor">{% for v,l in COLORS %}<option value="{{ v }}" {{ 'selected' if c and c.color==v }}>{{ l }}</option>{% endfor %}</select></label>
+        <label class="f"><span>ค่าคอส</span><input type="number" min="0" name="cost" id="fcost" value="{{ c.cost if c else 0 }}"></label>
+        <label class="f"><span>รหัสการ์ด (เว้นว่างเพื่อสร้างอัตโนมัติ)</span><input name="code" value="{{ c.code if c and c.code else '' }}" maxlength="20" class="mono"></label>
+      </div>
+      <label class="f"><span>เอฟเฟค</span><textarea name="effect" id="feffect" rows="4">{{ c.effect if c else '' }}</textarea></label>
+      <div data-for="entity partners">
+        <label class="f"><span>เซิร์ฟเวอร์</span><input name="server" id="fserver" value="{{ c.server if c else '' }}" maxlength="60"></label>
+        <div class="cols" style="grid-template-columns:repeat(3,1fr)">
+          <label class="f"><span>พลังโจมตี</span><input type="number" min="0" name="atk" id="fatk" value="{{ c.atk if c else 0 }}"></label>
+          <label class="f"><span>คริ</span><input type="number" min="0" name="crit" id="fcrit" value="{{ c.crit if c else 0 }}"></label>
+          <label class="f"><span>ป้องกัน</span><input type="number" min="0" name="defense" id="fdef" value="{{ c.defense if c else 0 }}"></label>
+        </div>
+      </div>
+      <div data-for="ship">
+        <div class="cols" style="grid-template-columns:repeat(3,1fr)">
+          <label class="f"><span>Link 1 · โจมตี</span><input type="number" name="link_atk" id="flatk" value="{{ c.link_atk if c else 0 }}"></label>
+          <label class="f"><span>Link 2 · คริ</span><input type="number" name="link_crit" id="flcrit" value="{{ c.link_crit if c else 0 }}"></label>
+          <label class="f"><span>Link 3 · ป้องกัน</span><input type="number" name="link_def" id="fldef" value="{{ c.link_def if c else 0 }}"></label>
+        </div>
+      </div>
+      <label class="f"><span>ภาพการ์ด (ไม่เกิน 6MB) — Entity/Partners/Ship ใช้แนวตั้ง 5:7 เช่น 750×1050 · Server ใช้แนวนอน 16:9 เช่น 1280×720</span><input type="file" name="image" accept="image/*">
+        {% if c and c.image %}<label class="row" style="margin-top:6px"><input type="checkbox" name="clear_image"> ลบภาพเดิม</label>{% endif %}</label>
+      <div class="row"><button class="btn pri">บันทึกการ์ด</button><a class="btn" href="{{ url_for('admin_cards') }}">ยกเลิก</a></div>
+    </form>
+    <div class="box" style="position:sticky;top:84px"><h3>ตัวอย่าง</h3><div id="inspect" style="display:grid;justify-items:center"></div></div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}<script>
+let IMG={{ (card.image if card else '')|tojson }};
+let PREVIEW='';
+const g=id=>document.getElementById(id);
+function sync(){
+  const t=g('ftype').value;
+  document.querySelectorAll('[data-for]').forEach(e=>e.classList.toggle('hide',!e.dataset.for.split(' ').includes(t)));
+  const c={type:t,name:g('fname').value||'ชื่อการ์ด',color:g('fcolor').value,cost:+g('fcost').value||0,effect:g('feffect').value,server:g('fserver').value,
+    atk:+g('fatk').value||0,crit:+g('fcrit').value||0,def:+g('fdef').value||0,link_atk:+g('flatk').value||0,link_crit:+g('flcrit').value||0,link_def:+g('fldef').value||0,image:PREVIEW||IMG};
+  g('inspect').innerHTML=cardHTML(c,{big:true});
+}
+document.getElementById('cf').addEventListener('input',sync);
+document.querySelector('input[name=image]').addEventListener('change',e=>{
+  if(PREVIEW) URL.revokeObjectURL(PREVIEW);
+  const f=e.target.files[0]; PREVIEW=f?URL.createObjectURL(f):''; sync();
+});
+const clr=document.querySelector('input[name=clear_image]');
+if(clr) clr.addEventListener('change',()=>{ if(clr.checked){PREVIEW='';IMG='';} sync(); });
+sync();
+</script>{% endblock %}

@@ -1,0 +1,32 @@
+{% extends 'base.html' %}{% block title %}ห้องเล่น{% endblock %}
+{% block content %}
+<div class="wrap">
+  <h1 style="font-size:2rem">ห้องเล่น</h1>
+  <div class="cols">
+    <form method="post" action="{{ url_for('room_create') }}" class="box hex">
+      <h2>สร้างห้องใหม่</h2>
+      <label class="f"><span>ชื่อห้อง</span><input name="name" maxlength="40" placeholder="เช่น ซ้อมมือคืนวันเสาร์"></label>
+      <label class="f"><span>เด็คที่ใช้</span>
+        <select name="deck_id" required>{% for d in decks %}<option value="{{ d.id }}" {{ '' if d.ok else 'disabled' }}>{{ d.name }}{{ '' if d.ok else ' (ยังไม่ครบ Partners 4 ใบ)' }}</option>{% endfor %}</select></label>
+      {% if not decks %}<p class="mut">ยังไม่มีเด็ค <a href="{{ url_for('deck_edit') }}">สร้างเด็คก่อน</a></p>{% endif %}
+      <label class="f"><span>เด็คของฝั่งทดสอบ (เฉพาะโหมดทดสอบคนเดียว)</span>
+        <select name="deck2"><option value="">ใช้เด็คเดียวกับด้านบน</option>{% for d in decks %}{% if d.ok %}<option value="{{ d.id }}">{{ d.name }}</option>{% endif %}{% endfor %}</select></label>
+      <div class="row"><button class="btn pri" {{ '' if decks else 'disabled' }}>สร้างห้อง (เล่นกับเพื่อน)</button>
+        <button class="btn" name="solo" value="1" {{ '' if decks else 'disabled' }} title="เล่นคนเดียว ควบคุมได้ทั้งสองฝั่ง และเห็นการ์ดของทั้งคู่">ทดสอบเด็คคนเดียว</button></div>
+    </form>
+    <div class="box">
+      <h2>เข้าร่วมด้วยรหัสห้อง</h2>
+      <form class="row" onsubmit="event.preventDefault();location='/rooms/'+this.c.value.trim().toUpperCase()">
+        <input name="c" placeholder="รหัส 5 ตัว" class="grow mono" maxlength="5" required><button class="btn">เข้าห้อง</button></form>
+      <h3 class="mt">ห้องที่เปิดอยู่</h3>
+      <div id="list" class="dl"><span class="mut">กำลังโหลด…</span></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}<script>
+async function load(){const r=await fetch('/api/rooms');const l=await r.json();
+ document.getElementById('list').innerHTML=l.length?l.map(x=>`<div class="it"><span>${esc(x.name)} <small class="mut">โดย ${esc(x.host)}</small></span><b>${x.players}</b>
+  <a class="btn sm" href="/rooms/${x.code}">${x.players<2?'เข้าร่วม':'ดูเกม'}</a></div>`).join(''):'<span class="mut">ยังไม่มีห้อง สร้างห้องแรกได้เลย</span>'}
+load();setInterval(load,4000);
+</script>{% endblock %}

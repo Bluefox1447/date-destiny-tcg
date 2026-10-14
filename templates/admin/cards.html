@@ -1,0 +1,15 @@
+{% extends 'base.html' %}{% block title %}จัดการการ์ด{% endblock %}
+{% block content %}
+<div class="wrap">
+  {% include 'admin/_tabs.html' %}
+  <div class="row"><h1 style="font-size:2rem">การ์ดทั้งหมด ({{ cards|length }})</h1><a class="btn pri right" href="{{ url_for('admin_card_form') }}">เพิ่มการ์ด</a></div>
+  <div class="box" style="overflow:auto"><table>
+    <tr><th>รหัส</th><th>ชื่อ</th><th>ประเภท</th><th>สี</th><th>คอส</th><th>ค่าพลัง</th><th></th></tr>
+    {% for c in cards %}<tr><td class="mono">{{ c.code }}</td><td>{{ c.name }}</td><td>{{ c.type }}</td><td>{{ c.color }}</td><td class="mono">{{ c.cost }}</td>
+      <td class="mono">{% if c.type=='entity' %}{{ c.atk }}/{{ c.crit }}/{{ c.defense }}{% elif c.type=='ship' %}L {{ c.link_atk }}/{{ c.link_crit }}/{{ c.link_def }}{% else %}-{% endif %}</td>
+      <td class="row" style="justify-content:flex-end"><a class="btn sm" href="{{ url_for('admin_card_form', cid=c.id) }}">แก้ไข</a>
+        <form method="post" action="{{ url_for('admin_card_delete', cid=c.id) }}" onsubmit="return confirm('ลบการ์ด {{ c.name }}?')"><button class="btn sm dng">ลบ</button></form></td></tr>
+    {% else %}<tr><td colspan="7" class="mut">ยังไม่มีการ์ด เพิ่มใบแรกหรือรัน <span class="mono">flask seed-demo</span> เพื่อดูตัวอย่าง</td></tr>{% endfor %}
+  </table></div>
+</div>
+{% endblock %}

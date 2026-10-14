@@ -1,0 +1,47 @@
+{% extends 'base.html' %}{% block title %}ห้องเล่น {{ code }}{% endblock %}
+{% block bodyattr %}class="playpage" data-room="{{ code }}" data-uid="{{ current_user.id }}" data-public="{{ public_url }}"{% endblock %}
+{% macro zone(n, label, sub='') -%}
+<div class="zone z-{{ n }}" data-zone="{{ n }}"><div class="lbl">{{ label }}{% if sub %}<small>{{ sub }}</small>{% endif %}</div><div class="zc"></div></div>
+{%- endmacro %}
+{% block content %}
+<div class="play">
+  <aside class="pl">
+    <div class="panel" id="panel"></div>
+    <div class="panel"><h3>บันทึกเกม</h3><div class="log" id="log"></div>
+      <form class="row" id="chatf" style="margin-top:8px"><input id="chat" placeholder="พิมพ์ข้อความ…" maxlength="300" class="grow"><button class="btn sm">ส่ง</button></form></div>
+  </aside>
+  <section class="stage">
+    <div class="mat" id="mat">
+      <!-- ฝั่งตรงข้าม (วางเหมือนเสื่อจริง หมุน 180°) -->
+      <div class="half opp" data-side="opp">
+        <div class="col">{{ zone('delect','Delect Zone') }}{{ zone('deck','Deck Zone') }}{{ zone('server','Server Zone') }}</div>
+        <div class="mid">{{ zone('protect','Protect Zone','(MAX 3 Entity)') }}{{ zone('attack','Attack Zone','(MAX 4 Entity)') }}</div>
+        <div class="col">{{ zone('partners','Partners Zone') }}{{ zone('hp','Firewall Zone') }}</div>
+      </div>
+      <div class="track"><div class="shape"></div><div class="mid"></div>
+        <div class="halves"><div class="trk me" id="trkMe"></div><div class="trk opp" id="trkOpp"></div></div>
+      </div>
+      <!-- ฝั่งเรา -->
+      <div class="half me" data-side="me">
+        <div class="col">{{ zone('hp','Firewall Zone') }}{{ zone('partners','Partners Zone') }}</div>
+        <div class="mid">{{ zone('attack','Attack Zone','(MAX 4 Entity)') }}{{ zone('protect','Protect Zone','(MAX 3 Entity)') }}</div>
+        <div class="col">{{ zone('server','Server Zone') }}{{ zone('deck','Deck Zone') }}{{ zone('delect','Delect Zone') }}</div>
+      </div>
+    </div>
+  </section>
+  <aside class="pr">
+    <div class="oppblock"><div class="plate" id="oppPlate"></div><div class="opphand" id="oppHand"></div></div>
+    <div class="inspectbox"><div id="inspect"><span class="mut">เลื่อนเมาส์ไปบนการ์ดเพื่อดูรายละเอียด</span></div></div>
+    <div class="meblock"><div class="plate" id="mePlate"></div><div class="handbar" id="hand" data-zone="hand"></div></div>
+  </aside>
+</div>
+<div class="modal hide" id="modal"><div><div class="row"><h2 id="mtitle" class="grow"></h2><button class="btn sm" id="mclose">ปิด</button></div><div class="listgrid" id="mlist"></div></div></div>
+<div class="modal" id="deckpick" style="display:none"><div style="max-width:460px"><h2>เลือกเด็คที่จะใช้ในห้องนี้</h2>
+  <select id="deckSel">{% for d in decks %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}</select>
+  {% if not decks %}<p class="mut">ยังไม่มีเด็คที่พร้อมเล่น <a href="{{ url_for('decks') }}">ไปจัดเด็ค</a></p>{% endif %}
+  <div class="row mt"><button class="btn pri" id="joinBtn" {{ '' if decks else 'disabled' }}>เข้าห้อง</button><button class="btn" id="specBtn">ดูเฉยๆ</button></div></div></div>
+{% endblock %}
+{% block scripts %}
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script src="{{ url_for('static', filename='js/play.js') }}"></script>
+{% endblock %}

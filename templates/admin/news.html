@@ -1,0 +1,24 @@
+{% extends 'base.html' %}{% block title %}จัดการข่าว{% endblock %}
+{% block content %}
+<div class="wrap">
+  {% include 'admin/_tabs.html' %}
+  <div class="cols" style="grid-template-columns:minmax(300px,420px) 1fr">
+    <form method="post" enctype="multipart/form-data" class="box">
+      <h2>{{ 'แก้ไขข่าว' if edit else 'ประกาศข่าวใหม่' }}</h2>
+      <input type="hidden" name="id" value="{{ edit.id if edit else '' }}">
+      <label class="f"><span>หัวข้อ</span><input name="title" value="{{ edit.title if edit else '' }}" required maxlength="160"></label>
+      <label class="f"><span>เนื้อหา</span><textarea name="body" rows="7">{{ edit.body if edit else '' }}</textarea></label>
+      <label class="f"><span>ภาพประกอบ (ไม่บังคับ)</span><input type="file" name="image" accept="image/*"></label>
+      <label class="row" style="margin-bottom:14px"><input type="checkbox" name="pinned" {{ 'checked' if edit and edit.pinned }}> ปักหมุดไว้บนสุด</label>
+      <div class="row"><button class="btn pri">{{ 'บันทึก' if edit else 'ประกาศ' }}</button>{% if edit %}<a class="btn" href="{{ url_for('admin_news') }}">ยกเลิก</a>{% endif %}</div>
+    </form>
+    <div class="news">
+      {% for n in items %}<article><div class="row"><h3 style="margin:0" class="grow">{{ n.title }}</h3>{% if n.pinned %}<span class="pill warn">ปักหมุด</span>{% endif %}
+        <a class="btn sm" href="?edit={{ n.id }}">แก้ไข</a>
+        <form method="post" action="{{ url_for('admin_news_delete', nid=n.id) }}" onsubmit="return confirm('ลบข่าวนี้?')"><button class="btn sm dng">ลบ</button></form></div>
+        <div class="body">{{ n.body[:200] }}{{ '…' if n.body|length>200 }}</div></article>
+      {% else %}<p class="mut">ยังไม่มีข่าว เขียนข่าวแรกทางซ้ายได้เลย</p>{% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}
