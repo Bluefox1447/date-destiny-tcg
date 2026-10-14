@@ -106,4 +106,5 @@ static/js/    app.js (วาดการ์ด), deckbuilder.js, play.js (สน
 - `SKIP_EMAIL_VERIFY=1` ทำให้ใครก็สมัครได้โดยไม่ยืนยันอีเมล เหมาะกับกลุ่มเพื่อน ถ้ามี `MAIL_*` แล้วให้ตั้งเป็น 0
 #   d a t e - d e s t i n y - t c g  
  #   d a t e - d e s t i n y - t c g  
+ #   d a t e - d e s t i n y - t c g  
  
