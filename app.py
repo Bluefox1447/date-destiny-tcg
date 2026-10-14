@@ -34,10 +34,11 @@ def _secret_key():
     open(path, 'w').write(k)
     return k
 
-
 _db_url = os.getenv('DATABASE_URL', 'sqlite:///dds.db')
-if _db_url.startswith('postgres://'):                 # Render/Heroku ให้ URL แบบเก่า
-    _db_url = 'postgresql://' + _db_url[len('postgres://'):]
+if _db_url.startswith('postgres://'):
+    _db_url = 'postgresql+psycopg://' + _db_url[len('postgres://'):]
+elif _db_url.startswith('postgresql://'):
+    _db_url = 'postgresql+psycopg://' + _db_url[len('postgresql://'):]
 ON_RENDER = bool(os.getenv('RENDER'))                   # Render ตั้งตัวแปร RENDER ให้เอง
 _secure = os.getenv('COOKIE_SECURE') == '1' or ON_RENDER   # เปิดผ่าน HTTPS
 app.config.update(
