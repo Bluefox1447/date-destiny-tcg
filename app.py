@@ -20,6 +20,7 @@ import game
 BASE = os.path.dirname(os.path.abspath(__file__))
 app = Flask(__name__)
 
+
 def _secret_key():
     """ใช้ SECRET_KEY จาก .env ถ้าไม่ตั้งไว้จะสร้างให้และเก็บถาวรใน instance/secret_key"""
     k = os.getenv('SECRET_KEY')
@@ -68,10 +69,6 @@ NEUROUS = ('entity', 'partners')      # ประเภทที่วางใ�
 
 # ---------------------------------------------------------------- OAuth
 oauth = OAuth(app)
-if email.lower() in admin_emails:
-    user.role = "admin"
-    user.verified = True   # แอดมินไม่ต้องยืนยันอีเมล
-    
 if os.getenv('GOOGLE_CLIENT_ID'):
     oauth.register('google', client_id=os.getenv('GOOGLE_CLIENT_ID'),
                    client_secret=os.getenv('GOOGLE_CLIENT_SECRET'),
