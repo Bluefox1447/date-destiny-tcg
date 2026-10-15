@@ -3,6 +3,7 @@
 <div class="auth box hex">
   <h2>ขอสิทธิ์ Admin</h2>
   {% if current_user.is_admin %}<p>บัญชีนี้เป็น Admin อยู่แล้ว</p><a class="btn pri" href="{{ url_for('admin_cards') }}">ไปหน้าจัดการระบบ</a>
+  {% elif weak %}<p style="color:var(--err)">ADMIN_CLAIM_TOKEN ที่ตั้งไว้ <b>สั้นเกินไป</b> ระบบจึงปิดหน้านี้เพื่อความปลอดภัย ให้ตั้งเป็นข้อความยาวอย่างน้อย 16 ตัวอักษรที่ Render → Environment</p>
   {% elif not enabled %}<p class="mut">เซิร์ฟเวอร์ยังไม่ได้ตั้งค่า <span class="mono">ADMIN_CLAIM_TOKEN</span> ในตัวแปรสภาพแวดล้อม</p>
   {% else %}
   <p class="mut">ใส่รหัสลับ <span class="mono">ADMIN_CLAIM_TOKEN</span> (ดูได้ที่ Render → Environment)</p>

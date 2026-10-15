@@ -5,12 +5,14 @@
 {%- endmacro %}
 {% block content %}
 <div class="play">
+  <button id="drawerTab" class="drawertab" title="เปิด/ปิดแถบเครื่องมือ">เครื่องมือ ▸</button>
   <aside class="pl">
     <div class="panel" id="panel"></div>
     <div class="panel"><h3>บันทึกเกม</h3><div class="log" id="log"></div>
       <form class="row" id="chatf" style="margin-top:8px"><input id="chat" placeholder="พิมพ์ข้อความ…" maxlength="300" class="grow"><button class="btn sm">ส่ง</button></form></div>
   </aside>
   <section class="stage">
+    <button id="fsBtn" class="fsbtn" title="โหมดเต็มจอ (กดปุ่ม F)">⛶ เต็มจอ</button>
     <div class="mat" id="mat">
       <!-- ฝั่งตรงข้าม (วางเหมือนเสื่อจริง หมุน 180°) -->
       <div class="half opp" data-side="opp">
@@ -35,6 +37,7 @@
     <div class="meblock"><div class="plate" id="mePlate"></div><div class="handbar" id="hand" data-zone="hand"></div></div>
   </aside>
 </div>
+<div class="modal hide" id="zoom"><div class="zbox"><button class="btn sm zclose" id="zclose">ปิด ✕</button><div id="zcard"></div><div id="ztext" class="itext"></div></div></div>
 <div class="modal hide" id="modal"><div><div class="row"><h2 id="mtitle" class="grow"></h2><button class="btn sm" id="mclose">ปิด</button></div><div class="listgrid" id="mlist"></div></div></div>
 <div class="modal" id="deckpick" style="display:none"><div style="max-width:460px"><h2>เลือกเด็คที่จะใช้ในห้องนี้</h2>
   <select id="deckSel">{% for d in decks %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}</select>

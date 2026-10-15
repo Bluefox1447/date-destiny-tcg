@@ -2,5 +2,6 @@
   <a class="btn sm {{ 'on' if request.path.startswith('/admin/cards') }}" href="{{ url_for('admin_cards') }}">การ์ด</a>
   <a class="btn sm {{ 'on' if request.path.startswith('/admin/sleeves') }}" href="{{ url_for('admin_sleeves') }}">Sleeve</a>
   <a class="btn sm {{ 'on' if request.path.startswith('/admin/news') }}" href="{{ url_for('admin_news') }}">ข่าวอัปเดต</a>
+  <a class="btn sm {{ 'on' if request.path.startswith('/admin/system') }}" href="{{ url_for('admin_system') }}">ตรวจระบบ</a>
   <a class="btn sm {{ 'on' if request.path.startswith('/admin/users') }}" href="{{ url_for('admin_users') }}">ผู้ใช้</a>
 </div>

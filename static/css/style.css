@@ -334,3 +334,70 @@ body.playpage .nav .in{padding:5px 20px}
 .dmg{position:absolute;right:.3em;bottom:.3em;background:var(--err);color:#2a0b10;border-radius:.6em;padding:0 .45em;font:700 max(.95em,10px) var(--mono);z-index:2;border:2px solid #2a0b10}
 .tg .calc{flex:1 1 100%;display:flex;flex-wrap:wrap;gap:2px 10px;font-size:.8rem}
 .tg .bad{color:var(--err)} .tg small{opacity:.7}
+
+/* ================= รอบแก้ไข: ป้ายกลางการ์ด / Link / ข้อความใหญ่ / เต็มจอ / D4 ================= */
+/* ป้ายบัพ-ดาเมจ-Link อยู่กลางการ์ด */
+.bdg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:3px;z-index:3;pointer-events:none}
+.bdg .ctr,.bdg .dmg,.bdg .lnk{position:static;display:block;padding:0 .55em;border-radius:.7em;line-height:1.45;font:700 max(1.15em,12px) var(--mono);border:2px solid rgba(0,0,0,.55);box-shadow:0 2px 6px rgba(0,0,0,.5)}
+.bdg .ctr{background:var(--sig);color:#102028}
+.bdg .dmg{background:var(--err);color:#2a0b10}
+.bdg .lnk{background:#ffd166;color:#3a2a00}
+
+/* เลย์เอาต์ห้องเล่น: คอลัมน์ขวาแคบลง สนามใหญ่ขึ้น เมนูบนสุดกะทัดรัด */
+body.playpage .nav .in{padding:2px 20px;gap:2px}
+body.playpage .nav a.l{padding:1px 12px}
+body.playpage .logo{font-size:1rem}
+body.playpage .logo i{width:24px;height:24px}
+.play{--H:calc(100vh - 62px);grid-template-columns:330px minmax(0,calc(var(--H)*.878)) minmax(230px,300px);justify-content:center;padding:6px 10px}
+.stage{position:relative}
+.half .col,.half .mid{gap:1.2cqh}
+.track{flex:0 0 12%}
+.z-attack .zc,.z-protect .zc{--zcw:min(calc((100cqh - 6px)/1.4),150px)}
+.mat{gap:calc(var(--mw)*.009)}
+.play #inspect{max-width:290px}
+.play #inspect .card{--cw:clamp(150px,21vh,210px)}
+.play #inspect .card.t-server{--cw:clamp(130px,17vh,170px)}
+.handbar{--hcw:clamp(56px,8.6vh,92px)}
+
+/* ตัวหนังสือรายละเอียดการ์ดใหญ่ อ่านง่าย */
+.itext{align-self:stretch;display:grid;gap:6px;text-align:left;margin-top:6px}
+.iname{font-size:1.35rem;font-weight:600;line-height:1.25}
+.imeta{color:#cfd3d8;font-size:1.02rem}
+.isr{display:flex;flex-wrap:wrap;gap:4px 16px;font:600 1.2rem var(--mono)}
+.isr b{color:var(--sig)}
+.ieff{font-size:1.18rem;line-height:1.65;white-space:pre-wrap;background:rgba(0,0,0,.28);border-radius:12px;padding:10px 12px}
+.islk{font-size:1.02rem;border:2px solid #ffd166;border-radius:12px;padding:6px 10px;display:grid;gap:2px}
+.islk small{opacity:.85}
+.ihint{font-size:.8rem;color:var(--mut)}
+.modal>.zbox{max-width:1060px;width:auto;display:flex;gap:30px;align-items:flex-start;position:relative;padding:28px}
+.zclose{position:absolute;right:12px;top:12px}
+#zoom .card{--cw:min(380px,40vw,54vh)}
+#zoom .card.t-server{--cw:min(300px,32vw,42vh)}
+#zoom .itext{flex:1;min-width:260px;max-width:480px;margin-top:0}
+#zoom .iname{font-size:2.1rem}#zoom .imeta{font-size:1.2rem}#zoom .isr{font-size:1.55rem}#zoom .ieff{font-size:1.45rem}#zoom .islk{font-size:1.2rem}
+@media(max-width:820px){.modal>.zbox{flex-direction:column;align-items:center}}
+
+/* ปุ่มเต็มจอ + แท็บเครื่องมือฝั่งซ้าย */
+.fsbtn{position:absolute;right:4px;top:4px;z-index:5;border:2px solid #fff;background:rgba(30,30,32,.78);color:#fff;border-radius:10px;padding:2px 10px;font:inherit;font-size:.82rem;cursor:pointer}
+.fsbtn:hover{background:#fff;color:#222}
+.drawertab{display:none;position:fixed;left:0;top:40%;z-index:72;writing-mode:vertical-rl;background:var(--sig);color:#102028;border:0;border-radius:0 12px 12px 0;padding:14px 8px;font:600 .95rem var(--font);cursor:pointer;transition:left .25s}
+body.fs .nav{display:none}
+body.fs .play{--H:calc(100vh - 18px);grid-template-columns:minmax(0,1fr) minmax(230px,300px);justify-content:stretch}
+body.fs .pl{position:fixed;left:0;top:0;bottom:0;width:360px;z-index:71;background:var(--bg);padding:10px;overflow:auto;border-right:3px solid var(--line);transform:translateX(-104%);transition:transform .25s;box-shadow:0 0 40px rgba(0,0,0,.6)}
+body.fs.drawer-open .pl{transform:none}
+body.fs .drawertab{display:block}
+body.fs.drawer-open .drawertab{left:360px}
+@media(max-width:1320px){.drawertab{display:none!important}body.fs .pl{position:static;transform:none;width:auto}}
+
+/* ลูกเต๋า D4 */
+.dice-ov{position:fixed;inset:0;z-index:96;display:grid;place-items:center;pointer-events:none;background:radial-gradient(circle,rgba(98,214,255,.18),rgba(10,10,12,.62))}
+.dice-ov.out{opacity:0;transition:opacity .5s}
+.d4wrap{display:grid;justify-items:center;gap:18px}
+.d4{width:180px;height:156px;position:relative;filter:drop-shadow(0 14px 18px rgba(0,0,0,.55));animation:d4roll 1.3s cubic-bezier(.22,.8,.3,1) both}
+.d4::before{content:'';position:absolute;inset:0;background:linear-gradient(165deg,#9be9ff,#3b82f6 55%,#1b3a80);clip-path:polygon(50% 0,100% 100%,0 100%)}
+.d4::after{content:'';position:absolute;inset:0;background:linear-gradient(200deg,rgba(255,255,255,.55),rgba(255,255,255,0) 60%);clip-path:polygon(50% 0,50% 72%,0 100%)}
+.d4n{position:absolute;left:50%;top:64%;transform:translate(-50%,-50%);font:800 3.4rem var(--mono);color:#fff;z-index:2;text-shadow:0 2px 0 rgba(0,0,0,.5)}
+.d4.land{animation:d4pop .55s ease both}
+.d4cap{font-size:1.7rem;font-weight:600;color:#fff;text-shadow:0 2px 10px #000;text-align:center}
+@keyframes d4roll{0%{transform:translateY(-340px) rotate(0) scale(.7)}35%{transform:translateY(0) rotate(360deg) scale(1)}50%{transform:translateY(-80px) rotate(560deg)}68%{transform:translateY(0) rotate(760deg)}80%{transform:translateY(-24px) rotate(900deg)}100%{transform:translateY(0) rotate(1080deg)}}
+@keyframes d4pop{0%{transform:scale(1)}40%{transform:scale(1.3)}100%{transform:scale(1.1)}}

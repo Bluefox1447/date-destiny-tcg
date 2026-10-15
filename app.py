@@ -1,4 +1,4 @@
-import os, json, random, string, smtplib, base64, uuid, re, secrets
+import os, json, random, string, smtplib, base64, uuid, re, secrets, time
 from datetime import datetime, timedelta
 from email.message import EmailMessage
 from functools import wraps
@@ -34,11 +34,10 @@ def _secret_key():
     open(path, 'w').write(k)
     return k
 
+
 _db_url = os.getenv('DATABASE_URL', 'sqlite:///dds.db')
-if _db_url.startswith('postgres://'):
-    _db_url = 'postgresql+psycopg://' + _db_url[len('postgres://'):]
-elif _db_url.startswith('postgresql://'):
-    _db_url = 'postgresql+psycopg://' + _db_url[len('postgresql://'):]
+if _db_url.startswith('postgres://'):                 # Render/Heroku ให้ URL แบบเก่า
+    _db_url = 'postgresql://' + _db_url[len('postgres://'):]
 ON_RENDER = bool(os.getenv('RENDER'))                   # Render ตั้งตัวแปร RENDER ให้เอง
 _secure = os.getenv('COOKIE_SECURE') == '1' or ON_RENDER   # เปิดผ่าน HTTPS
 app.config.update(
@@ -158,6 +157,30 @@ def save_upload(file, sub):
     return f'{UPLOAD_URL}/{sub}/{name}'
 
 
+_hits = {}
+
+
+def rate_limited(key, limit, window):
+    """จำกัดจำนวนครั้งต่อช่วงเวลา (เก็บในหน่วยความจำ ใช้ได้เพราะรัน worker เดียว) คืน True ถ้าเกินโควตา"""
+    now = time.time()
+    lst = [t for t in _hits.get(key, []) if now - t < window]
+    if len(lst) >= limit:
+        _hits[key] = lst
+        return True
+    lst.append(now)
+    _hits[key] = lst
+    if len(_hits) > 5000:
+        for k in [k for k, v in _hits.items() if not v or now - v[-1] > 3600]:
+            _hits.pop(k, None)
+    return False
+
+
+def claim_token():
+    """ADMIN_CLAIM_TOKEN ใช้ได้เมื่อยาวอย่างน้อย 16 ตัวอักษร (กันตั้งค่าอ่อนอย่าง '1')"""
+    t = os.getenv('ADMIN_CLAIM_TOKEN', '')
+    return t if len(t) >= 16 else ''
+
+
 def pop_next():
     """กลับไปหน้าที่ตั้งใจจะเข้า (เช่นลิงก์ห้องที่เพื่อนส่งมา) หลังล็อคอิน/สมัคร"""
     nxt = session.pop('next', '')
@@ -166,6 +189,22 @@ def pop_next():
 
 # ---------------------------------------------------------------- Email
 def send_mail(to, subject, body):
+    key = os.getenv('BREVO_API_KEY')
+    if key:       # ส่งผ่าน HTTPS API (Brevo) ใช้ได้บน Render ฟรีที่บล็อกพอร์ต SMTP 25/465/587
+        try:
+            import requests
+            sender = os.getenv('MAIL_FROM_EMAIL') or os.getenv('MAIL_USERNAME') or ''
+            r = requests.post('https://api.brevo.com/v3/smtp/email', timeout=10,
+                              headers={'api-key': key, 'accept': 'application/json', 'content-type': 'application/json'},
+                              json={'sender': {'name': os.getenv('MAIL_FROM_NAME', 'Date Destiny TCG'), 'email': sender},
+                                    'to': [{'email': to}], 'subject': subject, 'textContent': body})
+            if r.status_code >= 300:
+                print('brevo error', r.status_code, r.text[:200])
+                return False
+            return True
+        except Exception as e:
+            print('brevo error:', e)
+            return False
     host = os.getenv('MAIL_SERVER')
     if not host:
         print(f'\n[DEV MAIL] to={to}\n{subject}\n{body}\n')
@@ -177,9 +216,9 @@ def send_mail(to, subject, body):
         msg.set_content(body)
         port = int(os.getenv('MAIL_PORT', 587))
         if os.getenv('MAIL_SSL') == '1':
-            s = smtplib.SMTP_SSL(host, port, timeout=15)
+            s = smtplib.SMTP_SSL(host, port, timeout=8)
         else:
-            s = smtplib.SMTP(host, port, timeout=15)
+            s = smtplib.SMTP(host, port, timeout=8)
             s.starttls()
         s.login(os.getenv('MAIL_USERNAME'), os.getenv('MAIL_PASSWORD'))
         s.send_message(msg)
@@ -213,7 +252,9 @@ def register():
         email = request.form.get('email', '').strip().lower()
         username = request.form.get('username', '').strip()
         pw = request.form.get('password', '')
-        if not re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', email):
+        if rate_limited(f'reg:{request.remote_addr}', 10, 3600):
+            flash('สมัครสมาชิกถี่เกินไป กรุณารอสักครู่', 'err')
+        elif not re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', email):
             flash('รูปแบบอีเมลไม่ถูกต้อง', 'err')
         elif not 2 <= len(username) <= 30:
             flash('ชื่อผู้ใช้ต้องยาว 2–30 ตัวอักษร', 'err')
@@ -285,10 +326,17 @@ def login():
     if request.method == 'POST':
         email = request.form.get('email', '').strip().lower()
         u = User.query.filter_by(email=email).first()
-        if not u or not u.password_hash or not check_password_hash(u.password_hash, request.form.get('password', '')):
+        if rate_limited(f'login:{request.remote_addr}', 15, 300):
+            flash('พยายามเข้าสู่ระบบหลายครั้งเกินไป กรุณารอ 5 นาที', 'err')
+        elif not u or not u.password_hash or not check_password_hash(u.password_hash, request.form.get('password', '')):
             flash('อีเมลหรือรหัสผ่านไม่ถูกต้อง', 'err')
         elif u.banned:
             flash('บัญชีนี้ถูกระงับ', 'err')
+        elif not u.verified and os.getenv('SKIP_EMAIL_VERIFY') == '1':
+            u.verified, u.code = True, None            # โหมดข้ามอีเมล: ยืนยันบัญชีที่สมัครค้างไว้ให้เลย
+            db.session.commit()
+            login_user(u, remember=True)
+            return redirect(pop_next())
         elif not u.verified:
             session['verify_email'] = email
             issue_code(u)
@@ -365,15 +413,19 @@ def oauth_callback(provider):
 @login_required
 def claim_admin():
     """ขอสิทธิ์ Admin ด้วยรหัสลับ ADMIN_CLAIM_TOKEN (ใช้บนโฮสต์ที่เปิด Shell ไม่ได้ เช่น Render ฟรี)"""
-    token = os.getenv('ADMIN_CLAIM_TOKEN', '')
+    token = claim_token()
+    weak = bool(os.getenv('ADMIN_CLAIM_TOKEN')) and not token
     if request.method == 'POST':
-        if token and secrets.compare_digest(request.form.get('token', ''), token):
+        if rate_limited(f'claim:{current_user.id}', 5, 600):
+            flash('ลองผิดหลายครั้ง กรุณารอ 10 นาที', 'err')
+        elif token and secrets.compare_digest(request.form.get('token', ''), token):
             current_user.role = 'admin'
             db.session.commit()
             flash('คุณเป็น Admin แล้ว', 'ok')
             return redirect(url_for('admin_cards'))
-        flash('รหัสไม่ถูกต้อง (หรือยังไม่ได้ตั้ง ADMIN_CLAIM_TOKEN)', 'err')
-    return render_template('claim_admin.html', enabled=bool(token))
+        else:
+            flash('รหัสไม่ถูกต้อง (หรือยังไม่ได้ตั้ง ADMIN_CLAIM_TOKEN)', 'err')
+    return render_template('claim_admin.html', enabled=bool(token), weak=weak)
 
 
 @app.route('/profile', methods=['GET', 'POST'])
@@ -478,6 +530,70 @@ def admin_card_delete(cid):
     db.session.commit()
     flash('ลบการ์ดแล้ว', 'ok')
     return redirect(url_for('admin_cards'))
+
+
+# ---------------------------------------------------------------- ตรวจการตั้งค่าระบบ (admin)
+def system_checks():
+    out = []
+
+    def add(level, title, detail):          # level: ok | warn | bad
+        out.append(dict(level=level, title=title, detail=detail))
+
+    db_kind = app.config['SQLALCHEMY_DATABASE_URI'].split(':')[0].split('+')[0]
+    add('ok' if ON_RENDER else 'ok', 'สภาพแวดล้อม', 'Render (ตรวจพบอัตโนมัติ)' if ON_RENDER else 'เครื่องของคุณ / เซิร์ฟเวอร์อื่น')
+    if db_kind == 'sqlite':
+        add('warn' if ON_RENDER else 'ok', 'ฐานข้อมูล', 'SQLite' + (' — บน Render ไฟล์จะหายเมื่อรีสตาร์ท ให้ตั้ง DATABASE_URL เป็น PostgreSQL' if ON_RENDER else ' (ไฟล์ในเครื่อง)'))
+    else:
+        add('ok', 'ฐานข้อมูล', f'{db_kind} (ข้อมูลถาวร) · ฐานข้อมูลฟรีของ Render หมดอายุ 30 วันหลังสร้าง')
+    if UPLOADS_IN_DB:
+        add('ok', 'รูปการ์ด/Sleeve', 'เก็บในฐานข้อมูล (ไม่หายตอนรีสตาร์ท)')
+    elif ON_RENDER and not os.getenv('UPLOAD_DIR'):
+        add('bad', 'รูปการ์ด/Sleeve', 'เก็บเป็นไฟล์บนดิสก์ชั่วคราว รูปจะหายตอนรีสตาร์ท ให้ตั้ง UPLOADS_IN_DB=1')
+    else:
+        add('ok', 'รูปการ์ด/Sleeve', f'เก็บเป็นไฟล์ที่ {UPLOAD_ROOT}')
+    if os.getenv('SECRET_KEY') and os.getenv('SECRET_KEY') != 'change-me-to-a-long-random-string':
+        add('ok', 'SECRET_KEY', 'ตั้งเองแล้ว' + ('' if len(os.getenv('SECRET_KEY')) >= 32 else ' (ควรยาว 32 ตัวอักษรขึ้นไป)'))
+    else:
+        add('warn' if ON_RENDER else 'ok', 'SECRET_KEY', 'ระบบสร้างให้เอง' + (' — บน Render จะเปลี่ยนทุกครั้งที่รีสตาร์ท ผู้ใช้จะถูกล็อคเอาต์ ให้ตั้งค่าเอง' if ON_RENDER else ''))
+    raw = os.getenv('ADMIN_CLAIM_TOKEN', '')
+    if not raw:
+        add('ok', 'ADMIN_CLAIM_TOKEN', 'ไม่ได้ตั้ง (ปิดหน้า /claim-admin)')
+    elif len(raw) < 16:
+        add('bad', 'ADMIN_CLAIM_TOKEN', f'สั้นเกินไป ({len(raw)} ตัวอักษร) ระบบปิดหน้า /claim-admin ให้อัตโนมัติ ตั้งให้ยาวอย่างน้อย 16 ตัวอักษร')
+    else:
+        add('ok', 'ADMIN_CLAIM_TOKEN', 'ตั้งแล้ว ความยาวเพียงพอ')
+    skip = os.getenv('SKIP_EMAIL_VERIFY') == '1'
+    smtp = bool(os.getenv('MAIL_SERVER')) and not os.getenv('BREVO_API_KEY')
+    if skip:
+        add('ok', 'ยืนยันอีเมล', 'ข้ามการยืนยัน (สมัครแล้วใช้ได้เลย) · ADMIN_EMAILS จะไม่เลื่อนเป็น Admin อัตโนมัติในโหมดนี้')
+    elif os.getenv('BREVO_API_KEY'):
+        add('ok', 'ยืนยันอีเมล', 'ส่งรหัสผ่าน Brevo (HTTPS)')
+    elif smtp and ON_RENDER:
+        add('bad', 'ยืนยันอีเมล', 'ใช้ SMTP แต่ Render แผนฟรีบล็อกพอร์ต 25/465/587 อีเมลจะส่งไม่ออก ให้ตั้ง SKIP_EMAIL_VERIFY=1 หรือใช้ BREVO_API_KEY')
+    elif smtp:
+        add('ok', 'ยืนยันอีเมล', f"ส่งผ่าน SMTP {os.getenv('MAIL_SERVER')}")
+    else:
+        add('warn', 'ยืนยันอีเมล', 'ยังไม่ได้ตั้งค่าส่งอีเมล รหัสจะแสดงใน log ของเซิร์ฟเวอร์เท่านั้น')
+    if smtp and skip and ON_RENDER:
+        add('warn', 'MAIL_* ที่ไม่ได้ใช้', 'มีรหัสผ่านอีเมลเก็บไว้แต่ไม่ได้ใช้งาน (Render ฟรีบล็อก SMTP) แนะนำให้ลบ MAIL_* ออกจาก Environment')
+    add('ok' if (not ON_RENDER or app.config['SESSION_COOKIE_SECURE']) else 'warn', 'HTTPS / คุกกี้', f"คุกกี้ Secure: {'เปิด' if app.config['SESSION_COOKIE_SECURE'] else 'ปิด'} · ลิงก์ห้อง: {PUBLIC_URL or '(ใช้โดเมนที่เปิดอยู่)'}")
+    add('ok' if os.getenv('FLASK_DEBUG') != '1' else 'bad', 'โหมด debug', 'ปิด' if os.getenv('FLASK_DEBUG') != '1' else 'เปิดอยู่! ห้ามใช้กับเว็บที่คนอื่นเข้าได้')
+    add('ok', 'กติกาเด็ค', f'เด็คหลัก {DECK_SIZE} ใบ · การ์ดชื่อซ้ำได้ {MAX_COPIES} ใบ')
+    n_rooms = len(game.ROOMS)
+    add('ok', 'ห้องเล่นที่เปิดอยู่', f'{n_rooms} ห้อง (เก็บในหน่วยความจำ ต้องรัน worker เดียว: gunicorn -w 1)')
+    return out
+
+
+@app.route('/admin/system')
+@admin_required
+def admin_system():
+    return render_template('admin/system.html', checks=system_checks())
+
+
+def startup_warnings():
+    for c in system_checks():
+        if c['level'] == 'bad':
+            print(f"[คำเตือน] {c['title']}: {c['detail']}")
 
 
 # ---------------------------------------------------------------- News (admin)
@@ -939,6 +1055,7 @@ def migrate():
 with app.app_context():
     db.create_all()
     migrate()
+startup_warnings()
 
 if __name__ == '__main__':
     sio.run(app, host='0.0.0.0', port=int(os.getenv('PORT', 5000)),

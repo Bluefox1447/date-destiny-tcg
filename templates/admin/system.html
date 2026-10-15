@@ -1,0 +1,15 @@
+{% extends 'base.html' %}{% block title %}ตรวจระบบ{% endblock %}
+{% block content %}
+<div class="wrap">
+  {% include 'admin/_tabs.html' %}
+  <h1 style="font-size:2rem">ตรวจการตั้งค่าระบบ</h1>
+  <p class="mut">สรุปค่าที่เซิร์ฟเวอร์ใช้อยู่จริง (ไม่แสดงรหัสลับ) <b style="color:var(--err)">แดง</b> = ต้องแก้, <b style="color:var(--warn)">เหลือง</b> = ควรแก้</p>
+  <div class="box" style="display:grid;gap:10px">
+    {% for c in checks %}
+    <div class="row" style="align-items:flex-start;border-bottom:2px solid #66686c;padding-bottom:10px">
+      <span class="pill {{ {'ok':'ok','warn':'warn','bad':'err'}[c.level] }}" style="min-width:64px;text-align:center">{{ {'ok':'ปกติ','warn':'ควรแก้','bad':'ต้องแก้'}[c.level] }}</span>
+      <div class="grow"><b>{{ c.title }}</b><div class="mut">{{ c.detail }}</div></div>
+    </div>{% endfor %}
+  </div>
+</div>
+{% endblock %}

@@ -27,16 +27,8 @@ services:
         value: "50"
       - key: MAX_COPIES
         value: "4"
-      - key: MAIL_SERVER
-        sync: false
-      - key: MAIL_PORT
-        sync: false
-      - key: MAIL_USERNAME
-        sync: false
-      - key: MAIL_PASSWORD
-        sync: false
-      - key: MAIL_FROM
-        sync: false
+      # ถ้าจะส่งอีเมลยืนยันจริง: เพิ่ม MAIL_SERVER / MAIL_PORT / MAIL_USERNAME / MAIL_PASSWORD / MAIL_FROM
+      # ที่ Render > Environment แล้วตั้ง SKIP_EMAIL_VERIFY เป็น 0
 
 databases:
   - name: dds-db
