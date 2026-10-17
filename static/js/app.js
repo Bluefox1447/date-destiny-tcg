@@ -13,6 +13,8 @@ const COLOR_HEX={red:'#d4505a',blue:'#4b8de0',green:'#3fb27d',yellow:'#e2b832',p
 /** วาดการ์ดด้วย HTML/CSS (ใช้ภาพที่ Admin อัปโหลดถ้ามี) */
 function badges(o){
   const b=[];
+  const m=o.mod||{}, md=[['atk','โจมตี','A'],['crit','คริ','C'],['def','ป้องกัน','D']].filter(([k])=>m[k]).map(([k,n,l])=>`${l}${m[k]>0?'+':''}${m[k]}`);
+  if(md.length) b.push(`<span class="mod" title="บัพ/เดบัพ (โจมตี A · คริ C · ป้องกัน D)">${md.join(' ')}</span>`);
   if(o.ctr) b.push(`<span class="ctr" title="ตัวนับ / บัพ">${o.ctr>0?'+':''}${o.ctr}</span>`);
   if(o.dmg) b.push(`<span class="dmg" title="ดาเมจที่ได้รับ">−${o.dmg}</span>`);
   if(o.lnk) b.push(`<span class="lnk" title="Ship ที่ Link อยู่">🔗${o.lnk}/3</span>`);
@@ -22,7 +24,10 @@ function cardHTML(c,o={}){
   if(!c) return '';
   if(c.image){   // Admin อัปโหลดภาพการ์ดสำเร็จรูป → แสดงภาพนั้นเป็นตัวการ์ดเลย
     const cls=['card','img','t-'+c.type,o.mini?'mini':'',o.big?'big':'',o.cls||''].join(' ');
-    return `<div class="${cls}" ${o.attrs||''} title="${esc(c.name)}" style="background-image:url('${esc(c.image)}')">${badges(o)}</div>`;
+    // รวม style เป็นอันเดียว (เบราว์เซอร์ใช้ style แรกอันเดียว ถ้าซ้ำรูปการ์ดจะหาย)
+    let st=`background-image:url('${esc(c.image)}')`, at=(o.attrs||'').replace(/\stitle="[^"]*"/g,'');
+    at=at.replace(/\sstyle="([^"]*)"/g,(m,x)=>{st+=';'+x;return '';});
+    return `<div class="${cls}" ${at} title="${esc(c.name)}" style="${st}">${badges(o)}</div>`;
   }
   const stats=c.type==='entity'||c.type==='partners'
     ? `<span title="พลังโจมตี">ATK ${c.atk}</span><span title="คริ">CRT ${c.crit}</span><span title="ป้องกัน">DEF ${c.def}</span>`

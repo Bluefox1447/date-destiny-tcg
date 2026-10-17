@@ -1,4 +1,4 @@
-import os, json, random, string, smtplib, base64, uuid, re, secrets, time
+import os, sys, json, random, string, smtplib, base64, uuid, re, secrets, time, traceback
 from datetime import datetime, timedelta
 from email.message import EmailMessage
 from functools import wraps
@@ -36,8 +36,10 @@ def _secret_key():
 
 
 _db_url = os.getenv('DATABASE_URL', 'sqlite:///dds.db')
-if _db_url.startswith('postgres://'):                 # Render/Heroku ให้ URL แบบเก่า
-    _db_url = 'postgresql://' + _db_url[len('postgres://'):]
+for _pre in ('postgres://', 'postgresql://'):          # Render/Heroku ให้ URL แบบไม่ระบุไดรเวอร์
+    if _db_url.startswith(_pre):                       # บังคับใช้ psycopg2 (SQLAlchemy 2.1 เปลี่ยนค่าเริ่มต้นเป็น psycopg3)
+        _db_url = 'postgresql+psycopg2://' + _db_url[len(_pre):]
+        break
 ON_RENDER = bool(os.getenv('RENDER'))                   # Render ตั้งตัวแปร RENDER ให้เอง
 _secure = os.getenv('COOKIE_SECURE') == '1' or ON_RENDER   # เปิดผ่าน HTTPS
 app.config.update(
@@ -139,6 +141,37 @@ def uploads(p):
 @app.get('/healthz')
 def healthz():
     return 'ok'
+
+
+@app.errorhandler(Exception)
+def on_error(e):
+    """บันทึก error ลง log เสมอ ถ้าตั้ง SHOW_ERRORS=1 จะแสดงสาเหตุบนหน้าเว็บ (ใช้ชั่วคราวตอนไล่ปัญหา)"""
+    from werkzeug.exceptions import HTTPException, InternalServerError
+    if isinstance(e, HTTPException):
+        return e
+    app.logger.exception('Unhandled error on %s', request.path)
+    if os.getenv('SHOW_ERRORS') == '1':
+        text = f'{type(e).__name__}: {e}\n\n' + ''.join(traceback.format_exception(type(e), e, e.__traceback__)[-7:])
+        text = re.sub(r'://[^@\s]+@', '://***@', text)[:4000]
+        return app.response_class(text, status=500, mimetype='text/plain; charset=utf-8')
+    return InternalServerError()
+
+
+@app.get('/readyz')
+def readyz():
+    """ตรวจว่าเชื่อมต่อฐานข้อมูลและมีตารางครบหรือไม่ (ใช้วินิจฉัยตอน deploy)"""
+    import sqlalchemy
+    from sqlalchemy import inspect
+    info = dict(python=sys.version.split()[0], sqlalchemy=sqlalchemy.__version__)
+    try:
+        db.session.execute(db.text('select 1'))
+        info.update(db=db.engine.dialect.name, driver=db.engine.dialect.driver)
+        missing = sorted({'user', 'card', 'deck', 'news', 'sleeve', 'upload'} - set(inspect(db.engine).get_table_names()))
+        info.update(ok=not missing, missing_tables=missing)
+        return jsonify(info), (200 if not missing else 503)
+    except Exception as e:
+        detail = re.sub(r'://[^@\s]+@', '://***@', str(e))[:300]
+        return jsonify(ok=False, error=type(e).__name__, detail=detail, **info), 503
 
 
 def save_upload(file, sub):
@@ -577,6 +610,8 @@ def system_checks():
     if smtp and skip and ON_RENDER:
         add('warn', 'MAIL_* ที่ไม่ได้ใช้', 'มีรหัสผ่านอีเมลเก็บไว้แต่ไม่ได้ใช้งาน (Render ฟรีบล็อก SMTP) แนะนำให้ลบ MAIL_* ออกจาก Environment')
     add('ok' if (not ON_RENDER or app.config['SESSION_COOKIE_SECURE']) else 'warn', 'HTTPS / คุกกี้', f"คุกกี้ Secure: {'เปิด' if app.config['SESSION_COOKIE_SECURE'] else 'ปิด'} · ลิงก์ห้อง: {PUBLIC_URL or '(ใช้โดเมนที่เปิดอยู่)'}")
+    if os.getenv('SHOW_ERRORS') == '1':
+        add('warn', 'SHOW_ERRORS', 'เปิดอยู่ ผู้เข้าเว็บทุกคนจะเห็นข้อความ error ใช้ชั่วคราวตอนไล่ปัญหา แล้วลบตัวแปรนี้ออก')
     add('ok' if os.getenv('FLASK_DEBUG') != '1' else 'bad', 'โหมด debug', 'ปิด' if os.getenv('FLASK_DEBUG') != '1' else 'เปิดอยู่! ห้ามใช้กับเว็บที่คนอื่นเข้าได้')
     add('ok', 'กติกาเด็ค', f'เด็คหลัก {DECK_SIZE} ใบ · การ์ดชื่อซ้ำได้ {MAX_COPIES} ใบ')
     n_rooms = len(game.ROOMS)

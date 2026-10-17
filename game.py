@@ -7,8 +7,8 @@ from threading import RLock
 
 LOCK = RLock()
 ROOMS = {}
-ZONES = ('deck', 'hand', 'attack', 'protect', 'partners', 'server', 'hp', 'delect')
-LIMITS = {'attack': 4, 'protect': 3}
+ZONES = ('deck', 'hand', 'attack', 'protect', 'partners', 'server', 'aura', 'hp', 'delect')
+LIMITS = {'attack': 4, 'protect': 3, 'aura': 3}     # Aura Zone: การ์ด Ship สูงสุด 3 ใบ
 MAX_CODE = 10
 COUNTER_DAMAGE = True     # แบบ Hearthstone: เป้าหมายสวนกลับด้วยค่า ATK ของตัวเอง (ตั้งเป็น False ถ้าไม่ต้องการให้สวนกลับ)
 NEUROUS = ('entity', 'partners')
@@ -18,7 +18,7 @@ DICE_SIDES = 4
 HP_START = 8
 HAND_START = 4
 Z_TH = {'deck': 'Deck', 'hand': 'มือ', 'attack': 'Attack Zone', 'protect': 'Protect Zone',
-        'partners': 'Partners Zone', 'server': 'Server Zone', 'hp': 'Firewall Zone (HP)',
+        'partners': 'Partners Zone', 'server': 'Server Zone', 'aura': 'Aura Zone', 'hp': 'Firewall Zone (HP)',
         'delect': 'Delect Zone'}
 
 
@@ -44,7 +44,7 @@ def other(room, uid):
 
 def _inst(room, cid):
     room['seq'] += 1
-    return {'iid': room['seq'], 'cid': int(cid), 'up': False, 'tap': False, 'ctr': 0, 'dmg': 0, 'links': []}
+    return {'iid': room['seq'], 'cid': int(cid), 'up': False, 'tap': False, 'ctr': 0, 'dmg': 0, 'links': [], 'mod': {'atk': 0, 'crit': 0, 'def': 0}}
 
 
 def _new_state():
@@ -62,7 +62,7 @@ def _build(room, p):
     z = {k: [] for k in ZONES}
     z['deck'] = main
     room['state']['p'][p['uid']] = {
-        'z': z, 'code': 0, 'turns': 0,
+        'z': z, 'code': 0, 'turns': 0, 'protect_atk': True,
         'pre_partners': [_inst(room, c) for c in deck['partners']],
         'setup': {'placed': False, 'drew': False, 'mull': False, 'hp': False, 'ready': False},
     }
@@ -119,7 +119,7 @@ def view(room, viewer):
             owner = uid == viewer or reveal
             zs = {zn: ([_vis(c, zn, owner) for c in lst] if zn != 'deck' else len(lst))
                   for zn, lst in p['z'].items()}
-            st['p'][uid] = {'z': zs, 'code': p['code'], 'turns': p['turns'], 'setup': p['setup']}
+            st['p'][uid] = {'z': zs, 'code': p['code'], 'turns': p['turns'], 'protect_atk': p['protect_atk'], 'setup': p['setup']}
         out['state'] = st
     return out
 
@@ -149,6 +149,10 @@ def _eff(room, c):
         a += li.get('link_atk', 0)
         k += li.get('link_crit', 0)
         d += li.get('link_def', 0)
+    m = c.get('mod') or {}                   # บัพ/เดบัพที่ปรับด้วยปุ่ม โจมตี/คริ/ป้องกัน +/-
+    a += m.get('atk', 0)
+    k += m.get('crit', 0)
+    d += m.get('def', 0)
     return {'atk': max(0, a), 'crit': max(0, k), 'def': d}
 
 
@@ -158,6 +162,7 @@ def _drop_links(z, c):
         ln['up'], ln['tap'] = True, False
         z['delect'].append(ln)
     c['links'] = []
+    c['mod'] = {'atk': 0, 'crit': 0, 'def': 0}     # ออกจากสนาม/ถูกทำลาย: ล้างบัพ
 
 
 def find(me, iid):
@@ -362,6 +367,8 @@ def act(room, uid, d):
                 break
         if not ac:
             return 'ผู้โจมตีต้องอยู่ใน Attack Zone หรือ Protect Zone ของคุณ', None
+        if azone == 'protect' and not me['protect_atk']:
+            return 'ตั้งค่า Protect Zone เป็น "โจมตีไม่ได้" อยู่ (กดปุ่ม Protect โจมตีได้ เพื่อเปิด)', None
         ai = room['cards'].get(str(ac['cid']), {})
         if ai.get('type') not in NEUROUS:
             return 'การ์ดใบนี้โจมตีไม่ได้', None
@@ -454,6 +461,10 @@ def act(room, uid, d):
                 return None, None
         L(f'HP ลดลง {n} (เหลือ {len(z["hp"])})')
         return None, None
+    if t == 'protect_atk':       # สวิตช์: การ์ดใน Protect Zone ของเราโจมตีได้ / ไม่ได้
+        me['protect_atk'] = bool(d.get('on'))
+        L('ตั้งค่า Protect Zone: ' + ('โจมตีได้' if me['protect_atk'] else 'โจมตีไม่ได้'))
+        return None, None
     if t == 'concede':
         s['winner'] = opp['uid'] if opp else None
         L('ยอมแพ้')
@@ -478,6 +489,8 @@ def act(room, uid, d):
         si = room['cards'].get(str(c['cid']), {})
         if si.get('type') != 'ship':
             return 'เฉพาะการ์ด Ship เท่านั้นที่ Link ได้', None
+        if fr == 'aura':
+            return 'Ship ที่วางใน Aura Zone แล้ว Link ไม่ได้', None
         if fr not in ('hand', 'server', 'partners', 'attack', 'protect'):
             return 'ย้าย Ship มาที่มือหรือสนามก่อน', None
         tgt = next((x for zn in ('attack', 'protect') for x in z[zn] if x['iid'] == d.get('target')), None)
@@ -487,16 +500,12 @@ def act(room, uid, d):
             return 'Link ได้เฉพาะกับ Neurous', None
         if len(tgt['links']) >= LINK_MAX:
             return f'Link ได้ไม่เกิน {LINK_MAX} ใบต่อ Neurous', None
-        cost = si.get('cost', 0) if d.get('pay') and fr == 'hand' else 0
-        if cost > me['code']:
-            return f'Code ไม่พอ (ต้องใช้ {cost}, มี {me["code"]})', None
-        me['code'] -= cost
-        z[fr].pop(i)
+        z[fr].pop(i)                       # Link ฟรี ไม่เสียค่าคอส
         c['up'], c['tap'], c['dmg'] = True, False, 0
         tgt['links'].append(c)
-        L(f"Link {si.get('name', '?')} → {_cname(room, tgt)} ({len(tgt['links'])}/{LINK_MAX})" + (f' (จ่าย {cost} Code)' if cost else ''))
+        L(f"Link {si.get('name', '?')} → {_cname(room, tgt)} ({len(tgt['links'])}/{LINK_MAX}) ฟรี")
         return None, None
-    if t in ('tap', 'flip', 'ctr', 'move', 'dmg') and not c:
+    if t in ('tap', 'flip', 'ctr', 'move', 'dmg', 'mod') and not c:
         return 'ไม่พบการ์ด', None
     if t == 'tap':
         c['tap'] = not c['tap']
@@ -514,6 +523,23 @@ def act(room, uid, d):
             z['delect'].append(c)
             L(f"{info.get('name', '?')} ถูกทำลาย (ดาเมจถึงค่า DEF)")
         return None, None
+    if t == 'mod':               # ปรับค่า โจมตี / คริ / ป้องกัน ของ Neurous บนสนาม (+/-)
+        if fr not in ('attack', 'protect'):
+            return 'ปรับค่าได้เฉพาะ Neurous ที่อยู่บนสนาม', None
+        stat = d.get('stat')
+        if stat == 'clear':
+            c['mod'] = {'atk': 0, 'crit': 0, 'def': 0}
+        elif stat in ('atk', 'crit', 'def'):
+            c['mod'][stat] = max(-99, min(99, c['mod'][stat] + int(d.get('delta', 1))))
+        else:
+            return 'ค่าที่ปรับไม่ถูกต้อง', None
+        if c['dmg'] > 0 and c['dmg'] >= _eff(room, c)['def']:      # DEF ลดลงจนต่ำกว่าดาเมจที่สะสม = ถูกทำลาย
+            z[fr].remove(c)
+            c['tap'], c['up'], c['dmg'] = False, True, 0
+            _drop_links(z, c)
+            z['delect'].append(c)
+            L(f"{_cname(room, c)} ถูกทำลาย (DEF ลดลงต่ำกว่าดาเมจ)")
+        return None, None
     if t == 'ctr':
         c['ctr'] = max(-99, min(99, c['ctr'] + int(d.get('delta', 1))))
         return None, None
@@ -521,6 +547,8 @@ def act(room, uid, d):
         to = d.get('to')
         if to not in ZONES:
             return 'โซนไม่ถูกต้อง', None
+        if to == 'aura' and room['cards'].get(str(c['cid']), {}).get('type') != 'ship':
+            return 'Aura Zone ใช้ได้เฉพาะการ์ด Ship', None
         if fr == to and to not in ('deck',):
             return None, None
         if to in LIMITS and fr != to and len(z[to]) >= LIMITS[to]:

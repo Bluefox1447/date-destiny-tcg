@@ -1,7 +1,7 @@
 {% extends 'base.html' %}{% block title %}ห้องเล่น {{ code }}{% endblock %}
 {% block bodyattr %}class="playpage" data-room="{{ code }}" data-uid="{{ current_user.id }}" data-public="{{ public_url }}"{% endblock %}
-{% macro zone(n, label, sub='') -%}
-<div class="zone z-{{ n }}" data-zone="{{ n }}"><div class="lbl">{{ label }}{% if sub %}<small>{{ sub }}</small>{% endif %}</div><div class="zc"></div></div>
+{% macro zone(n, label, sub='', side='') -%}
+<div class="zone z-{{ n }}" data-zone="{{ n }}"{% if side %} data-side="{{ side }}"{% endif %}><div class="lbl">{{ label }}{% if sub %}<small>{{ sub }}</small>{% endif %}</div><div class="zc"></div></div>
 {%- endmacro %}
 {% block content %}
 <div class="play">
@@ -13,21 +13,37 @@
   </aside>
   <section class="stage">
     <button id="fsBtn" class="fsbtn" title="โหมดเต็มจอ (กดปุ่ม F)">⛶ เต็มจอ</button>
+    <aside class="kwp" aria-label="คำอธิบายสกิลของการ์ด">
+      <h3>รายละเอียดสกิลของการ์ด</h3>
+      <div class="kwi"><span class="kwb kC">C</span><p><b>Call</b> สั่งใช้งานความสามารถของการ์ดได้ทันทีเมื่อลงสนาม ใช้งานได้แค่ครั้งเดียวเมื่อลงสนามเท่านั้น</p></div>
+      <div class="kwi"><span class="kwb kF">F</span><p><b>Flash</b> สั่งใช้งานความสามารถได้ทันที</p></div>
+      <div class="kwi"><span class="kwb kCT">CT</span><p><b>Combat Time</b> สั่งใช้งานความสามารถได้เมื่อ Ai เราโจมตีอีกฝ่ายหรือกำลังจะโจมตี</p></div>
+      <div class="kwi"><span class="kwb kA">A</span><p><b>Aura</b> ใช้งานความสามารถอัตโนมัติตลอดทั้งเทิร์นจนกว่าการ์ดใบนี้จะถูกทำลาย</p></div>
+      <div class="kwi"><span class="kwb kT">1/T</span><p><b>1/T</b> สั่งใช้งานความสามารถได้ตลอดเมื่อการ์ดใบนั้นอยู่บนสนามได้ 1 ครั้งต่อเทิร์นเท่านั้น</p></div>
+      <div class="kwi"><span class="kwb kS">Set</span><p><b>Set</b> เป็นเอฟเฟคที่เอาไว้ติดตั้งการ์ดสนาม</p></div>
+      <div class="kwi"><span class="kwb kED">ED</span><p><b>ED</b> สั่งใช้งานตอนเข้าสู่ end phase</p></div>
+      <div class="kwi"><span class="kwb kB">break</span><p><b>break</b> เป็นเอฟเฟคตีทะลุ เมื่อทำลาย Neurous อีกฝ่ายสำเร็จ ฝ่ายตรงข้ามเสีย Hp ตามจำนวนคริติคอลของ Neurous เราที่โจมตี</p></div>
+    </aside>
     <div class="mat" id="mat">
       <!-- ฝั่งตรงข้าม (วางเหมือนเสื่อจริง หมุน 180°) -->
       <div class="half opp" data-side="opp">
-        <div class="col">{{ zone('delect','Delect Zone') }}{{ zone('deck','Deck Zone') }}{{ zone('server','Server Zone') }}</div>
+        <div class="col">{{ zone('delect','Delect Zone') }}{{ zone('deck','Deck Zone') }}{{ zone('aura','Aura Zone','(MAX 3 ship)') }}</div>
         <div class="mid">{{ zone('protect','Protect Zone','(MAX 3 Entity)') }}{{ zone('attack','Attack Zone','(MAX 4 Entity)') }}</div>
         <div class="col">{{ zone('partners','Partners Zone') }}{{ zone('hp','Firewall Zone') }}</div>
       </div>
-      <div class="track"><div class="shape"></div><div class="mid"></div>
-        <div class="halves"><div class="trk me" id="trkMe"></div><div class="trk opp" id="trkOpp"></div></div>
+      <!-- แถบกลาง: Server ของฝั่งตรงข้าม | แถบตัวนับ Code | Server ของเรา -->
+      <div class="band">
+        {{ zone('server','Server Zone','','opp') }}
+        <div class="track"><div class="shape"></div><div class="mid"></div>
+          <div class="halves"><div class="trk me" id="trkMe"></div><div class="trk opp" id="trkOpp"></div></div>
+        </div>
+        {{ zone('server','Server Zone','','me') }}
       </div>
       <!-- ฝั่งเรา -->
       <div class="half me" data-side="me">
         <div class="col">{{ zone('hp','Firewall Zone') }}{{ zone('partners','Partners Zone') }}</div>
         <div class="mid">{{ zone('attack','Attack Zone','(MAX 4 Entity)') }}{{ zone('protect','Protect Zone','(MAX 3 Entity)') }}</div>
-        <div class="col">{{ zone('server','Server Zone') }}{{ zone('deck','Deck Zone') }}{{ zone('delect','Delect Zone') }}</div>
+        <div class="col">{{ zone('aura','Aura Zone','(MAX 3 ship)') }}{{ zone('deck','Deck Zone') }}{{ zone('delect','Delect Zone') }}</div>
       </div>
     </div>
   </section>

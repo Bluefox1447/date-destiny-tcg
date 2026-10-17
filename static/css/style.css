@@ -401,3 +401,49 @@ body.fs.drawer-open .drawertab{left:360px}
 .d4cap{font-size:1.7rem;font-weight:600;color:#fff;text-shadow:0 2px 10px #000;text-align:center}
 @keyframes d4roll{0%{transform:translateY(-340px) rotate(0) scale(.7)}35%{transform:translateY(0) rotate(360deg) scale(1)}50%{transform:translateY(-80px) rotate(560deg)}68%{transform:translateY(0) rotate(760deg)}80%{transform:translateY(-24px) rotate(900deg)}100%{transform:translateY(0) rotate(1080deg)}}
 @keyframes d4pop{0%{transform:scale(1)}40%{transform:scale(1.3)}100%{transform:scale(1.1)}}
+
+/* รูปการ์ดในกล่องดูการ์ด + ป้ายชื่อผู้เล่นไม่ให้ตัดคำในคอลัมน์แคบ */
+#inspect .card[data-zoom]{cursor:zoom-in}
+.plate{flex-wrap:wrap;row-gap:0}
+.plate b{white-space:nowrap}
+
+/* ================= สนามตามเสื่อใหม่: Aura Zone / Server ข้างแถบตัวนับ / แผง Keyword ================= */
+.play{grid-template-columns:330px minmax(0,1fr) minmax(230px,300px)}
+.mat{gap:calc(var(--mw)*.028)}
+.half{gap:2.9cqw}
+.half.me{grid-template-columns:273fr 1125fr 200fr}
+.half.opp{grid-template-columns:201fr 1125fr 270fr}
+.half .col,.half .mid{gap:1.6cqh}
+.z-aura{flex:1}
+.z-deck,.z-delect{width:auto;align-self:stretch}
+/* แถบกลาง */
+.band{flex:0 0 10.2%;display:grid;grid-template-columns:273fr 1145fr 275fr;gap:1.3cqw;min-height:0}
+.band .zone{flex:none;height:100%;width:auto}
+.band .track{flex:none;align-self:center;height:84%;margin:0}
+.band .lbl{font-size:clamp(.6rem,12cqh,1.05rem)}
+.band .z-server .zc{--zcw:min(calc((100cqh - 8px)/0.83),calc((100cqw - 14px)/1.5),104px)}
+.n{width:3.8cqh;font-size:clamp(.62rem,1.7cqh,1rem)}
+.half.opp .lbl,.zone[data-side="opp"] .lbl{transform:rotate(180deg)}
+.mat.upright .half.opp .lbl,.mat.upright .zone[data-side="opp"] .lbl{transform:none}
+/* ขนาดการ์ดพอดีช่อง (คำนวณทั้งความสูงและความกว้างของโซน) */
+.z-attack .zc{--zcw:min(calc((100cqh - 6px)/1.4),calc((100cqw - 26px)/4.3),150px)}
+.z-protect .zc{--zcw:min(calc((100cqh - 6px)/1.4),calc((100cqw - 26px)/3.3),150px)}
+.col .z-hp .zc,.col .z-delect .zc,.col .z-deck .zc{--zcw:min(calc((100cqh - 16px)/1.4),calc(100cqw - 22px),72px)}
+.col .z-partners .zc{--zcw:min(calc((100cqh - 14px)/2.8),calc((100cqw - 20px)/2.15),64px)}
+.col .z-aura .zc{--zcw:min(calc((100cqh - 10px)/2.4),calc(100cqw - 16px),62px);flex-direction:column;flex-wrap:nowrap;gap:0}
+.z-aura .zc .card+.card{margin-top:calc(var(--zcw)*-0.9)}
+.col .lbl{font-size:clamp(.58rem,9cqh,1rem)}
+/* บัพ A/C/D บนการ์ด */
+.bdg .mod{display:block;background:#7c5cff;color:#fff;border-radius:.7em;padding:0 .5em;line-height:1.45;font:700 max(1em,11px) var(--mono);border:2px solid rgba(0,0,0,.55);box-shadow:0 2px 6px rgba(0,0,0,.5);white-space:nowrap}
+.ctx .g button[data-keep]{text-align:center}
+/* แผง Keyword ด้านซ้ายของสนาม */
+.kwp{position:absolute;left:6px;top:6px;bottom:6px;z-index:2;width:min(320px,max(0px,calc((100cqw - min(100cqw,100cqh*.878))/2 - 14px)));
+  overflow:auto;display:flex;flex-direction:column;gap:7px;padding-right:2px}
+.kwp h3{margin:0 0 2px;font-size:1rem;color:#fff}
+.kwi{display:grid;grid-template-columns:46px 1fr;gap:8px;align-items:start;background:rgba(0,0,0,.30);border-radius:10px;padding:6px 8px}
+.kwi p{margin:0;font-size:.78rem;line-height:1.4;color:#e9ebee}
+.kwb{display:block;border-radius:6px;text-align:center;font:700 .85rem var(--mono);padding:5px 0;color:#fff}
+.kwb.kC{background:#222}.kwb.kF{background:linear-gradient(90deg,#00a67e,#00331f)}.kwb.kCT{background:#ff3b3b}
+.kwb.kA{background:linear-gradient(90deg,#a1d8a6,#2bb4c4);color:#06323a}.kwb.kT{background:linear-gradient(90deg,#7c5cff,#5ce1e6)}
+.kwb.kS{background:linear-gradient(90deg,#ff7eb3,#ffd966);color:#4a1230}.kwb.kED{background:#a63cff}.kwb.kB{background:linear-gradient(90deg,#ff1a00,#ff5a1f)}
+@container (max-width:860px){.kwp{display:none}}
