@@ -1,24 +1,60 @@
 {% extends 'base.html' %}
+{% macro zn(label, cls='') -%}<div class="mz {{ cls }}"><span>{{ label }}</span></div>{%- endmacro %}
 {% block content %}
-<div class="wrap">
-  <section class="hero">
-    <div>
-      <h1>เก็บ Code ตั้งแนวรับ<br>แล้วบุกทะลุ Firewall</h1>
-      <p class="lead">Date Destiny TCG เกมการ์ดสองคนที่ Neurous ต้องสู้กันบน Attack Zone และ Protect Zone จัดเด็ค แชร์เด็ค แล้วเปิดห้องเล่นกับเพื่อนได้ในเบราว์เซอร์</p>
-      <div class="row mt">
-        <a class="btn pri" href="{{ url_for('rooms') }}">เปิดห้องเล่น</a>
-        <a class="btn" href="{{ url_for('cards') }}">ดูการ์ดทั้งหมด ({{ n_cards }})</a>
+<!-- ฮีโร่กลางหน้า: ข้อความกึ่งกลาง + การ์ดจากในเว็บลอยอยู่ซ้าย-ขวา -->
+<section class="hero2">
+  <div class="floats" id="floats" aria-hidden="true"></div>
+  <div class="in">
+    <h1>เก็บ Code ตั้งแนวรับ<br>แล้วบุกทะลุ Firewall</h1>
+    <p class="lead">Date Destiny TCG เกมการ์ดสองคนที่ Neurous ต้องสู้กันบน Attack Zone และ Protect Zone จัดเด็ค แชร์เด็ค แล้วเปิดห้องเล่นกับเพื่อนได้ในเบราว์เซอร์ ไม่ต้องโหลดโปรแกรม</p>
+    <p class="lead sub">วางแผนใช้ Code ให้คุ้ม เรียก Neurous ลงสนาม ลิงก์ Ship เสริมพลัง แล้วบุกทำลาย HP ของอีกฝ่ายให้หมดก่อนใคร</p>
+    <div class="row cta">
+      <a class="btn pri" href="{{ url_for('rooms') }}">เปิดห้องเล่น</a>
+      <a class="btn" href="{{ url_for('cards') }}">ดูการ์ดทั้งหมด ({{ n_cards }})</a>
+      {% if current_user.is_authenticated %}<a class="btn" href="{{ url_for('decks') }}">จัดเด็คของฉัน</a>{% else %}<a class="btn" href="{{ url_for('register') }}">สมัครสมาชิก</a>{% endif %}
+    </div>
+  </div>
+</section>
+
+<div class="wrap" style="padding-top:10px">
+  <section class="mat-show">
+    <h2>สนามแข่ง</h2>
+    <p class="mut">Attack Zone วางได้ 4 ใบ · Protect Zone 3 ใบ · Aura Zone (Ship) 3 ใบ · Firewall Zone คือ HP ตอนเริ่ม 8 ใบ · แถบกลางเก็บ Code 1–10</p>
+    <div class="mm" aria-label="ภาพสนามแข่ง">
+      <div class="mm-half opp">
+        <div class="mm-col">{{ zn('Delect') }}{{ zn('Deck') }}{{ zn('Aura','aura') }}</div>
+        <div class="mm-mid">{{ zn('Protect Zone') }}{{ zn('Attack Zone') }}</div>
+        <div class="mm-col r">{{ zn('Partners','p') }}{{ zn('Firewall','f') }}</div>
+      </div>
+      <div class="mm-band">
+        {{ zn('Server') }}
+        <div class="mm-track">
+          <div class="mm-trk">
+            {% for n in range(1,11) %}
+              {% if n==1 %}{% set a='1/1/3/2' %}{% elif n==10 %}{% set a='1/6/3/7' %}
+              {% elif n%2==0 %}{% set a='1/'~(n//2+1)~'/2/'~(n//2+2) %}{% else %}{% set a='2/'~((n-1)//2+1)~'/3/'~((n-1)//2+2) %}{% endif %}
+              <i style="grid-area:{{ a }}">{{ n }}</i>
+            {% endfor %}
+          </div>
+          <div class="mm-trk opp">
+            {% for n in range(1,11) %}
+              {% if n==1 %}{% set a='1/6/3/7' %}{% elif n==10 %}{% set a='1/1/3/2' %}
+              {% elif n%2==1 %}{% set a='1/'~((11-n)//2+1)~'/2/'~((11-n)//2+2) %}{% else %}{% set a='2/'~((10-n)//2+1)~'/3/'~((10-n)//2+2) %}{% endif %}
+              <i style="grid-area:{{ a }}">{{ n }}</i>
+            {% endfor %}
+          </div>
+        </div>
+        {{ zn('Server') }}
+      </div>
+      <div class="mm-half me">
+        <div class="mm-col">{{ zn('Firewall','f') }}{{ zn('Partners','p') }}</div>
+        <div class="mm-mid">{{ zn('Attack Zone') }}{{ zn('Protect Zone') }}</div>
+        <div class="mm-col r">{{ zn('Aura','aura') }}{{ zn('Deck') }}{{ zn('Delect') }}</div>
       </div>
     </div>
-    <div class="mini-mat" aria-hidden="true">
-      <div class="rowz"><div class="z">Delect</div><div class="z t">Protect Zone</div><div class="z">Partners</div></div>
-      <div class="rowz"><div class="z">Deck</div><div class="z t">Attack Zone</div><div class="z">Firewall</div></div>
-      <div class="tr"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>10</span><span>5</span><span>4</span><span>3</span><span>2</span><span>1</span></div>
-      <div class="rowz"><div class="z">Firewall</div><div class="z t">Attack Zone</div><div class="z">Server</div></div>
-      <div class="rowz"><div class="z">Partners</div><div class="z t">Protect Zone</div><div class="z">Deck</div></div>
-    </div>
   </section>
-  <h2>ข่าวอัปเดต</h2>
+
+  <h2 style="margin-top:36px">ข่าวอัปเดต</h2>
   <div class="news">
     {% for n in news %}
     <article>
@@ -31,3 +67,16 @@
   </div>
 </div>
 {% endblock %}
+{% block scripts %}<script>
+/* สุ่มการ์ดจากคลังมาลอยซ้าย-ขวา (ใช้การ์ดที่มีรูปก่อน ไม่เอา Server เพราะเป็นแนวนอน) */
+fetch('/api/cards').then(r=>r.json()).then(all=>{
+  const box=document.getElementById('floats'); if(!box||!all.length) return;
+  const pool=all.filter(c=>c.type!=='server'); const src=pool.length?pool:all;
+  const withImg=src.filter(c=>c.image), rest=src.filter(c=>!c.image);
+  const shuffle=a=>a.map(v=>[Math.random(),v]).sort((x,y)=>x[0]-y[0]).map(x=>x[1]);
+  let pick=shuffle(withImg).concat(shuffle(rest));
+  while(pick.length&&pick.length<6) pick=pick.concat(shuffle(src));
+  const slots=['fl1','fr1','fl2','fr2','fl3','fr3'];
+  box.innerHTML=slots.map((k,i)=>`<div class="fcard ${k}" style="--del:${(-i*1.1).toFixed(1)}s;--dur:${(5.5+i*.6).toFixed(1)}s">${cardHTML(pick[i])}</div>`).join('');
+}).catch(()=>{});
+</script>{% endblock %}
