@@ -107,7 +107,7 @@ async function save(){
   if(!r.ok){toast('บันทึกไม่สำเร็จ','err');return null}
   const j=await r.json(); deck.id=j.id; history.replaceState(null,'','/decks/'+j.id+'/edit'); toast('บันทึกเด็คแล้ว','ok'); dirty=false; return j;
 }
-$('#save').onclick=save;
+$('#save').onclick=async()=>{const j=await save(); if(j) location.href='/decks?saved=1';};
 $('#copy').onclick=async()=>{const j=await save(); if(!j) return; const r=await (await fetch('/api/decks/'+j.id+'/code')).json();
   try{await navigator.clipboard.writeText(r.code);toast('คัดลอกโค้ดเด็คแล้ว','ok')}catch(e){prompt('คัดลอกโค้ดนี้',r.code)}};
 window.addEventListener('beforeunload',e=>{ if(dirty){e.preventDefault();e.returnValue='';} });

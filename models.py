@@ -66,6 +66,18 @@ class Upload(db.Model):
     created = db.Column(db.DateTime, default=datetime.utcnow)
 
 
+class Track(db.Model):
+    """เพลงประกอบที่ Admin อัปโหลด (เล่นเป็นเพลย์ลิสต์บนเว็บ)"""
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(120), nullable=False)
+    url = db.Column(db.String(300), nullable=False)
+    enabled = db.Column(db.Boolean, default=True)
+    created = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return dict(id=self.id, title=self.title, url=self.url)
+
+
 class Sleeve(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(80), nullable=False)

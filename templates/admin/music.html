@@ -1,0 +1,27 @@
+{% extends 'base.html' %}{% block title %}เพลงประกอบ{% endblock %}
+{% block content %}
+<div class="wrap">
+  {% include 'admin/_tabs.html' %}
+  <div class="cols" style="grid-template-columns:minmax(300px,380px) 1fr">
+    <form method="post" enctype="multipart/form-data" class="box">
+      <h2>เพิ่มเพลงประกอบ</h2>
+      <label class="f"><span>ชื่อเพลง</span><input name="title" maxlength="120" placeholder="เช่น Battle Theme"></label>
+      <label class="f"><span>ไฟล์เพลง (MP3 / OGG / WAV / M4A ไม่เกิน 15MB)</span><input type="file" name="audio" accept="audio/*,.mp3,.ogg,.wav,.m4a" required></label>
+      <button class="btn pri">เพิ่มเพลง</button>
+      <p class="mut" style="font-size:.85rem;margin-top:10px">เพลงที่เปิดใช้งานจะเล่นวนเป็นเพลย์ลิสต์ให้ผู้เล่นทุกคนที่เปิดเสียงไว้ (ปุ่มเสียงอยู่มุมขวาของแถบเมนู) ใช้เฉพาะเพลงที่คุณมีสิทธิ์ใช้งาน</p>
+    </form>
+    <div class="box">
+      <h2>เพลย์ลิสต์ ({{ items|length }})</h2>
+      {% for t in items %}
+      <div style="border-bottom:2px solid #66686c;padding:10px 0;display:grid;gap:8px">
+        <div class="row"><b class="grow">{{ t.title }}</b>
+          <span class="pill {{ 'ok' if t.enabled else '' }}">{{ 'เปิดใช้งาน' if t.enabled else 'ปิดอยู่' }}</span>
+          <form method="post" action="{{ url_for('admin_music_toggle', tid=t.id) }}"><button class="btn sm">{{ 'ปิด' if t.enabled else 'เปิด' }}</button></form>
+          <form method="post" action="{{ url_for('admin_music_delete', tid=t.id) }}" onsubmit="return confirm('ลบเพลงนี้?')"><button class="btn sm dng">ลบ</button></form></div>
+        <audio controls preload="none" src="{{ t.url }}" style="width:100%"></audio>
+      </div>
+      {% else %}<p class="mut">ยังไม่มีเพลง อัปโหลดเพลงแรกทางซ้ายได้เลย</p>{% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}

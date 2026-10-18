@@ -4,7 +4,7 @@ const CODE=document.body.dataset.room, MYID=+document.body.dataset.uid;
 let ACT=MYID, lastTurn=null, atkSel=null, bonusA=0, bonusD=0, combatOn=false;      // ACT = ฝั่งที่กำลังควบคุม (ห้องทดสอบสลับได้)
 const socket=io();
 const SLEEVE={me:'',opp:''};
-let S=null, mode=null, seated=false, autoPay=true, flipLabels=true, dragIid=null, dragCid=null, dragZone=null, lastRoll=null;
+let S=null, mode=null, seated=false, autoPay=true, flipLabels=true, dragIid=null, dragCid=null, dragZone=null, lastRoll=null, prevTurn;
 const DICE_TURNS=[3,5,7,9], LINK_MAX=3;
 const ZN={hp:'Firewall (HP)',partners:'Partners',attack:'Attack',protect:'Protect',server:'Server',delect:'Delect',deck:'Deck',hand:'มือ'};
 
@@ -15,6 +15,7 @@ $('#joinBtn').onclick=()=>{$('#deckpick').style.display='none';socket.emit('join
 $('#specBtn').onclick=()=>{$('#deckpick').style.display='none';socket.emit('join',{code:CODE,spectate:true})};
 socket.on('state',s=>{
   S=s;
+  const tn=S.state?S.state.turn:null; if(window.sfx&&prevTurn!==undefined&&tn&&tn!==prevTurn&&tn===MYID&&!S.solo) sfx('turn'); prevTurn=tn;
   const rl=S.state&&S.state.roll, rkey=rl?`${rl.id}-${rl.ts}`:'';      // ลูกเต๋า D4: เล่นอนิเมชันเมื่อมีการทอยใหม่
   if(lastRoll===null) lastRoll=rkey; else if(rkey&&rkey!==lastRoll){lastRoll=rkey;showDice(rl);} else if(!rkey) lastRoll=rkey;
   if(S.solo&&S.state){   // ห้องทดสอบ: สลับไปควบคุมฝั่งที่ถึงเทิร์นให้อัตโนมัติ
@@ -25,7 +26,9 @@ socket.on('state',s=>{
 });
 socket.on('err',d=>toast(d.m,'err'));
 socket.on('peek',d=>openList('เด็คของคุณ (บนสุดก่อน)',d.cards,'deck'));
-const act=(type,x={})=>socket.emit('act',{code:CODE,type,...x,...(ACT!==MYID?{as:ACT}:{})});
+const act=(type,x={})=>{ if(window.sfx){ if(type==='attack') sfx('hit'); else if(['move','link','unlink','generate','tap','flip'].includes(type)) sfx('click'); }
+  socket.emit('act',{code:CODE,type,...x,...(ACT!==MYID?{as:ACT}:{})});
+};
 
 /* ---------------- Helpers ---------------- */
 function sides(){
@@ -412,10 +415,10 @@ function showDice(r){
   $('#dice')?.remove();
   const el=document.createElement('div'); el.id='dice'; el.className='dice-ov';
   el.innerHTML=`<div class="d4wrap"><div class="d4"><span class="d4n">4</span></div><div class="d4cap">${esc(nameOf(r.uid))} ทอยลูกเต๋า D4…</div></div>`;
-  document.body.appendChild(el);
+  document.body.appendChild(el); if(window.sfx) sfx('dice');
   const n=$('.d4n',el), cap=$('.d4cap',el), die=$('.d4',el);
   const iv=setInterval(()=>{n.textContent=1+Math.floor(Math.random()*4);},70);
-  setTimeout(()=>{clearInterval(iv); n.textContent=r.v; die.classList.add('land'); cap.innerHTML=`<b>${r.v}</b> → โบนัส +${r.v} Code`;},1300);
+  setTimeout(()=>{clearInterval(iv); n.textContent=r.v; die.classList.add('land'); if(window.sfx) sfx('land'); cap.innerHTML=`<b>${r.v}</b> → โบนัส +${r.v} Code`;},1300);
   setTimeout(()=>{el.classList.add('out'); setTimeout(()=>el.remove(),500);},3300);
 }
 

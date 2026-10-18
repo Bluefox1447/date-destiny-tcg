@@ -1,0 +1,50 @@
+{% extends 'base.html' %}{% block title %}{{ deck.name }}{% endblock %}
+{% block content %}
+<div class="wrap">
+  <div class="row">
+    <div class="grow">
+      <h1 style="font-size:2rem;margin:0">{{ deck.name }}</h1>
+      <div class="mut">โดย {{ owner }}{% if deck.public %} · <span class="pill ok">สาธารณะ</span>{% endif %}
+        {% if sleeve %} · Sleeve: {{ sleeve.name }}{% endif %}</div>
+    </div>
+    <div class="row">
+      {% if mine %}<a class="btn pri" href="{{ url_for('deck_edit', did=deck.id) }}">แก้ไขเด็ค</a>{% endif %}
+      <button class="btn" id="copyCode">คัดลอกโค้ด</button>
+      <form method="post" action="{{ url_for('deck_copy', did=deck.id) }}"><button class="btn">{{ 'ทำสำเนา' if mine else 'คัดลอกไปคลังของฉัน' }}</button></form>
+      <a class="btn" href="{{ url_for('decks') }}">กลับ</a>
+    </div>
+  </div>
+  {% if deck.desc %}<p style="margin:12px 0">{{ deck.desc }}</p>{% endif %}
+  {% if mine %}<div class="row" style="margin:8px 0">
+    {% for i in issues %}<span class="pill warn">{{ i }}</span>{% endfor %}
+    {% if not issues %}<span class="pill ok">พร้อมเล่น</span>{% endif %}</div>{% endif %}
+
+  <div class="box" style="margin-top:14px"><h3>Partners ใน Partners Zone <span class="mono mut" id="cp"></span></h3><div class="vgrid" id="vp"></div></div>
+  <div class="box" style="margin-top:14px"><h3>เด็คหลัก <span class="mono mut" id="cm"></span></h3><div class="vgrid" id="vm"></div></div>
+</div>
+<div class="modal hide" id="zoomv"><div class="zbox"><button class="btn sm zclose" id="zvx">ปิด ✕</button><div id="zvc"></div><div id="zvt" class="itext"></div></div></div>
+<script id="vd" type="application/json">{{ {'deck':deck,'cards':cards}|tojson }}</script>
+{% endblock %}
+{% block scripts %}<script>
+const V=JSON.parse(document.getElementById('vd').textContent), D=V.deck, C=V.cards, $=s=>document.querySelector(s);
+const NEU=['entity','partners'], sg=n=>(n>=0?'+':'')+n;
+const count=a=>a.reduce((m,id)=>(m[id]=(m[id]||0)+1,m),{});
+const tile=(id,q)=>C[id]?`<div class="tile" data-id="${id}" style="cursor:zoom-in">${cardHTML(C[id])}${q>1?`<span class="qty">×${q}</span>`:''}</div>`:'';
+const by=(a,b)=>C[a].cost-C[b].cost||C[a].name.localeCompare(C[b].name);
+const pc=count(D.partners), mc=D.main;
+$('#vp').innerHTML=Object.keys(pc).filter(i=>C[i]).sort(by).map(i=>tile(i,pc[i])).join('')||'<span class="mut">ยังไม่มี</span>';
+$('#vm').innerHTML=Object.keys(mc).filter(i=>C[i]).sort(by).map(i=>tile(i,mc[i])).join('')||'<span class="mut">ยังไม่มี</span>';
+$('#cp').textContent=D.partners.length+'/4'; $('#cm').textContent=Object.values(mc).reduce((a,b)=>a+b,0)+'/{{ DECK_SIZE }}';
+function detail(c){
+  const st=NEU.includes(c.type)?`<div class="isr"><span>ATK <b>${c.atk}</b></span><span>CRIT <b>${c.crit}</b></span><span>DEF <b>${c.def}</b></span></div>`
+    :c.type==='ship'?`<div class="isr"><span>Link ATK <b>${sg(c.link_atk)}</b></span><span>CRIT <b>${sg(c.link_crit)}</b></span><span>DEF <b>${sg(c.link_def)}</b></span></div>`:'';
+  return `<div class="iname">${esc(c.name)}</div><div class="imeta">${TYPE_LABEL[c.type]||c.type} · Cost ${c.cost}${c.server?' · '+esc(c.server):''}</div>${st}<div class="ieff">${esc(c.effect)||'<span class="mut">ไม่มีเอฟเฟค</span>'}</div>`;
+}
+document.addEventListener('click',e=>{const t=e.target.closest('.tile[data-id]'); if(!t) return; const c=C[t.dataset.id];
+  $('#zvc').innerHTML=cardHTML(c,{big:true}); $('#zvt').innerHTML=detail(c); $('#zoomv').classList.remove('hide');});
+const close=()=>$('#zoomv').classList.add('hide'); $('#zvx').onclick=close;
+$('#zoomv').addEventListener('click',e=>{if(e.target.id==='zoomv')close()});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')close()});
+$('#copyCode').onclick=async()=>{const r=await (await fetch('/api/decks/'+D.id+'/code')).json();
+  try{await navigator.clipboard.writeText(r.code);toast('คัดลอกโค้ดเด็คแล้ว','ok')}catch(e){prompt('คัดลอกโค้ดนี้',r.code)}};
+</script>{% endblock %}

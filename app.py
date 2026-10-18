@@ -1,4 +1,4 @@
-import os, sys, json, random, string, smtplib, base64, uuid, re, secrets, time, traceback
+import os, io, sys, json, random, string, smtplib, base64, uuid, re, secrets, time, traceback
 from datetime import datetime, timedelta
 from email.message import EmailMessage
 from functools import wraps
@@ -7,14 +7,14 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from flask import (Flask, render_template, request, redirect, url_for, flash,
-                   jsonify, abort, session, send_from_directory)
+                   jsonify, abort, session, send_from_directory, send_file)
 from flask_login import (LoginManager, login_user, logout_user, login_required, current_user)
 from flask_socketio import SocketIO, emit, join_room
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
 from authlib.integrations.flask_client import OAuth
 
-from models import db, User, Card, Deck, News, Sleeve, Upload
+from models import db, User, Card, Deck, News, Sleeve, Upload, Track
 import game
 
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -46,7 +46,7 @@ app.config.update(
     SECRET_KEY=_secret_key(),
     SQLALCHEMY_DATABASE_URI=_db_url,
     SQLALCHEMY_ENGINE_OPTIONS={'pool_pre_ping': True},
-    MAX_CONTENT_LENGTH=6 * 1024 * 1024,
+    MAX_CONTENT_LENGTH=20 * 1024 * 1024,        # รูปไม่เกิน 6MB (ตรวจแยก) เพลงไม่เกิน 15MB
     SESSION_COOKIE_SAMESITE='Lax', SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SECURE=_secure, REMEMBER_COOKIE_SECURE=_secure, REMEMBER_COOKIE_HTTPONLY=True,
 )
@@ -117,7 +117,9 @@ def to_int(v, d=0, lo=-999, hi=999):
 UPLOAD_ROOT = os.getenv('UPLOAD_DIR') or os.path.join(BASE, 'static', 'uploads')
 UPLOAD_URL = '/uploads' if os.getenv('UPLOAD_DIR') else '/static/uploads'
 UPLOADS_IN_DB = os.getenv('UPLOADS_IN_DB') == '1' or (ON_RENDER and not os.getenv('UPLOAD_DIR'))
-MIMES = {'.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif'}
+MIMES = {'.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif',
+         '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg', '.wav': 'audio/wav', '.m4a': 'audio/mp4'}
+AUDIO_EXT = ('.mp3', '.ogg', '.wav', '.m4a')
 
 
 @app.get('/media/<name>')
@@ -128,9 +130,9 @@ def media(name):
         up = None
     if not up:
         abort(404)
-    r = app.response_class(up.data, mimetype=up.mime)
-    r.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
-    return r
+    # send_file รองรับ Range request (เลื่อนเพลงได้) และแคชนาน
+    return send_file(io.BytesIO(up.data), mimetype=up.mime, conditional=True, etag=f'u{up.id}',
+                     last_modified=up.created, max_age=31536000)
 
 
 @app.get('/uploads/<path:p>')
@@ -178,6 +180,8 @@ def save_upload(file, sub):
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in ('.png', '.jpg', '.jpeg', '.webp', '.gif'):
         return None
+    if (file.content_length or 0) > 6 * 1024 * 1024:
+        return None
     if UPLOADS_IN_DB:
         up = Upload(mime=MIMES[ext], data=file.read())
         db.session.add(up)
@@ -212,6 +216,27 @@ def claim_token():
     """ADMIN_CLAIM_TOKEN ใช้ได้เมื่อยาวอย่างน้อย 16 ตัวอักษร (กันตั้งค่าอ่อนอย่าง '1')"""
     t = os.getenv('ADMIN_CLAIM_TOKEN', '')
     return t if len(t) >= 16 else ''
+
+
+def save_audio(file):
+    """บันทึกไฟล์เพลง (mp3/ogg/wav/m4a ไม่เกิน 15MB) คืน URL หรือ None"""
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in AUDIO_EXT:
+        return None
+    data = file.read()
+    if not data or len(data) > 15 * 1024 * 1024:
+        return None
+    if UPLOADS_IN_DB:
+        up = Upload(mime=MIMES[ext], data=data)
+        db.session.add(up)
+        db.session.commit()
+        return f'/media/{up.id}{ext}'
+    folder = os.path.join(UPLOAD_ROOT, 'music')
+    os.makedirs(folder, exist_ok=True)
+    name = uuid.uuid4().hex + ext
+    with open(os.path.join(folder, name), 'wb') as f:
+        f.write(data)
+    return f'{UPLOAD_URL}/music/{name}'
 
 
 def pop_next():
@@ -757,6 +782,20 @@ def decks():
     return render_template('decks.html', mine=mine, pub=pub, issues={d.id: deck_issues(d) for d in mine})
 
 
+@app.route('/decks/<int:did>')
+@login_required
+def deck_view(did):
+    d = db.get_or_404(Deck, did)
+    mine = d.user_id == current_user.id
+    if not mine and not d.public:
+        abort(403)
+    ids = set(map(int, d.main)) | set(d.partners)
+    cards = {c.id: c.to_dict() for c in Card.query.filter(Card.id.in_(ids))} if ids else {}
+    sl = db.session.get(Sleeve, d.sleeve_id) if d.sleeve_id else None
+    return render_template('deck_view.html', deck=d.to_dict(), cards=cards, owner=d.owner.username if d.owner else '-',
+                           mine=mine, issues=deck_issues(d) if mine else [], sleeve=sl.to_dict() if sl else None)
+
+
 @app.route('/decks/new')
 @app.route('/decks/<int:did>/edit')
 @login_required
@@ -857,6 +896,53 @@ def deck_import():
         print('import error', e)
         flash('โค้ดเด็คไม่ถูกต้อง', 'err')
         return redirect(url_for('decks'))
+
+
+# ---------------------------------------------------------------- เพลงประกอบ
+@app.get('/api/music')
+def api_music():
+    return jsonify([t.to_dict() for t in Track.query.filter_by(enabled=True).order_by(Track.id)])
+
+
+@app.route('/admin/music', methods=['GET', 'POST'])
+@admin_required
+def admin_music():
+    if request.method == 'POST':
+        f = request.files.get('audio')
+        url = save_audio(f) if f and f.filename else None
+        if not url:
+            flash('เลือกไฟล์ MP3 / OGG / WAV / M4A ขนาดไม่เกิน 15MB', 'err')
+            return redirect(url_for('admin_music'))
+        title = request.form.get('title', '').strip()[:120] or os.path.splitext(f.filename)[0][:120]
+        db.session.add(Track(title=title, url=url))
+        db.session.commit()
+        flash('เพิ่มเพลงแล้ว', 'ok')
+        return redirect(url_for('admin_music'))
+    return render_template('admin/music.html', items=Track.query.order_by(Track.id.desc()).all())
+
+
+@app.post('/admin/music/<int:tid>/toggle')
+@admin_required
+def admin_music_toggle(tid):
+    t = db.get_or_404(Track, tid)
+    t.enabled = not t.enabled
+    db.session.commit()
+    return redirect(url_for('admin_music'))
+
+
+@app.post('/admin/music/<int:tid>/delete')
+@admin_required
+def admin_music_delete(tid):
+    t = db.get_or_404(Track, tid)
+    m = re.match(r'^/media/(\d+)\.', t.url or '')
+    if m:
+        up = db.session.get(Upload, int(m.group(1)))
+        if up:
+            db.session.delete(up)
+    db.session.delete(t)
+    db.session.commit()
+    flash('ลบเพลงแล้ว', 'ok')
+    return redirect(url_for('admin_music'))
 
 
 # ---------------------------------------------------------------- Sleeves (หลังการ์ด)

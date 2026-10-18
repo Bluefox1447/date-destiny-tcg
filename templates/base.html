@@ -27,9 +27,16 @@
   <a class="l" href="{{ url_for('login') }}">เข้าสู่ระบบ</a>
   <a class="btn pri sm" href="{{ url_for('register') }}">สมัครสมาชิก</a>
   {% endif %}
+  <div class="snd" id="snd" title="เสียงประกอบ">
+    <button id="sndBtn" type="button" aria-label="เปิด/ปิดเสียง">🔊</button>
+    <span id="sndName" class="sndname"></span>
+    <button id="sndNext" type="button" aria-label="เพลงถัดไป" title="เพลงถัดไป">⏭</button>
+    <input id="sndVol" type="range" min="0" max="100" value="50" aria-label="ระดับเสียง">
+  </div>
 </div></nav>
 <div class="flash" id="flash">{% for cat, msg in get_flashed_messages(with_categories=true) %}<div class="{{ cat }}">{{ msg }}</div>{% endfor %}</div>
 {% block content %}{% endblock %}
 <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+<script src="{{ url_for('static', filename='js/sound.js') }}"></script>
 {% block scripts %}{% endblock %}
 </body></html>
