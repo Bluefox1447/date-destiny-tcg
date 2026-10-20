@@ -17,6 +17,7 @@
   {% if current_user.is_admin %}
   <a class="l {{ 'on' if request.path.startswith('/admin') }}" href="{{ url_for('admin_cards') }}">จัดการระบบ</a>
   {% endif %}
+  <a class="l {{ 'on' if request.endpoint=='users_page' }}" href="{{ url_for('users_page') }}">ผู้ใช้งาน</a>
   <span class="grow"></span>
   <a class="l" href="{{ url_for('profile') }}" style="display:flex;gap:8px;align-items:center">
     {% if current_user.avatar %}<img class="av" src="{{ current_user.avatar }}" alt="">{% else %}<span class="av">{{ current_user.username[:1]|upper }}</span>{% endif %}

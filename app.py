@@ -515,6 +515,19 @@ def profile():
     return render_template('profile.html')
 
 
+# ---------------------------------------------------------------- ผู้ใช้งานในระบบ
+@app.route('/users')
+@login_required
+def users_page():
+    qs = User.query
+    if not current_user.is_admin:        # ผู้เล่นทั่วไปเห็นเฉพาะบัญชีที่ใช้งานปกติ (ไม่เห็นอีเมล)
+        qs = qs.filter(User.verified.is_(True), User.banned.is_(False))
+    users = qs.order_by(User.created.asc()).all()
+    online = {p['uid'] for r in game.ROOMS.values() for p in r['players'] if p.get('online') and p['uid'] > 0}
+    counts = dict(db.session.query(Deck.user_id, db.func.count(Deck.id)).filter(Deck.public.is_(True)).group_by(Deck.user_id).all())
+    return render_template('users.html', users=users, online=online, counts=counts)
+
+
 # ---------------------------------------------------------------- Cards
 @app.route('/cards')
 def cards():

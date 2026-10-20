@@ -4,7 +4,7 @@ const CODE=document.body.dataset.room, MYID=+document.body.dataset.uid;
 let ACT=MYID, lastTurn=null, atkSel=null, bonusA=0, bonusD=0, combatOn=false;      // ACT = ฝั่งที่กำลังควบคุม (ห้องทดสอบสลับได้)
 const socket=io();
 const SLEEVE={me:'',opp:''};
-let S=null, mode=null, seated=false, autoPay=true, flipLabels=true, dragIid=null, dragCid=null, dragZone=null, lastRoll=null, prevTurn;
+let S=null, mode=null, seated=false, autoPay=true, flipLabels=true, dragIid=null, dragCid=null, dragZone=null, lastRoll=null, prevTurn, lastLogN=null;
 const DICE_TURNS=[3,5,7,9], LINK_MAX=3;
 const ZN={hp:'Firewall (HP)',partners:'Partners',attack:'Attack',protect:'Protect',server:'Server',delect:'Delect',deck:'Deck',hand:'มือ'};
 
@@ -15,6 +15,11 @@ $('#joinBtn').onclick=()=>{$('#deckpick').style.display='none';socket.emit('join
 $('#specBtn').onclick=()=>{$('#deckpick').style.display='none';socket.emit('join',{code:CODE,spectate:true})};
 socket.on('state',s=>{
   S=s;
+  if(window.sfx&&S.log&&S.log.length){   // เสียง สับเด็ค/จั่ว/ทิ้ง: ดูจากบันทึกเกมใหม่ (ได้ยินทั้งการกระทำของเราและของอีกฝ่าย)
+    const mx=Math.max(...S.log.map(l=>l.n||0));
+    if(lastLogN===null) lastLogN=mx;
+    else{const fresh=S.log.filter(l=>(l.n||0)>lastLogN&&l.k!=='chat'); lastLogN=mx; if(fresh.length) logSfx(fresh);}
+  }
   const tn=S.state?S.state.turn:null; if(window.sfx&&prevTurn!==undefined&&tn&&tn!==prevTurn&&tn===MYID&&!S.solo) sfx('turn'); prevTurn=tn;
   const rl=S.state&&S.state.roll, rkey=rl?`${rl.id}-${rl.ts}`:'';      // ลูกเต๋า D4: เล่นอนิเมชันเมื่อมีการทอยใหม่
   if(lastRoll===null) lastRoll=rkey; else if(rkey&&rkey!==lastRoll){lastRoll=rkey;showDice(rl);} else if(!rkey) lastRoll=rkey;
@@ -26,7 +31,14 @@ socket.on('state',s=>{
 });
 socket.on('err',d=>toast(d.m,'err'));
 socket.on('peek',d=>openList('เด็คของคุณ (บนสุดก่อน)',d.cards,'deck'));
-const act=(type,x={})=>{ if(window.sfx){ if(type==='attack') sfx('hit'); else if(['move','link','unlink','generate','tap','flip'].includes(type)) sfx('click'); }
+function logSfx(fresh){
+  const t=fresh.map(l=>l.text).join(' | '), q=[];
+  if(/สับเด็ค|เปลี่ยนการ์ดบนมือ/.test(t)) q.push('shuffle');
+  if(/จั่ว|ขึ้นมือ|เปลี่ยนการ์ดบนมือ/.test(t)) q.push('draw');
+  if(/→ Delect Zone/.test(t)) q.push('discard');
+  q.forEach((n,i)=>setTimeout(()=>sfx(n),i*280));
+}
+const act=(type,x={})=>{ if(window.sfx){ if(type==='attack') sfx('hit'); else if(['link','unlink','tap','flip'].includes(type)||(type==='move'&&x.to!=='delect')) sfx('click'); }
   socket.emit('act',{code:CODE,type,...x,...(ACT!==MYID?{as:ACT}:{})});
 };
 
@@ -126,12 +138,26 @@ function panel(){
   h+=toolsHTML(st);
   el.innerHTML=h;
 }
+const showLink=url=>uiConfirm({title:'คัดลอกลิงก์ห้อง',html:`<p style="margin:0 0 8px">คัดลอกลิงก์นี้ส่งให้เพื่อน</p><input class="cfm-in" readonly value="${esc(url)}" onfocus="this.select()">`,ok:'เสร็จสิ้น',cancel:null});
 const shareUrl=()=>(document.body.dataset.public||location.origin)+location.pathname;
+function uiConfirm({title='ยืนยัน',html='',ok='ยืนยัน',cancel='ยกเลิก',tone=''}){
+  return new Promise(res=>{
+    $('#cfm')?.remove();
+    const el=document.createElement('div'); el.id='cfm'; el.className='cfm';
+    el.innerHTML=`<div class="cfm-box ${tone}" role="alertdialog" aria-modal="true"><h3>${esc(title)}</h3><div class="cfm-body">${html}</div>
+      <div class="cfm-btns">${cancel?`<button class="btn" data-r="0">${esc(cancel)}</button>`:''}<button class="btn pri" data-r="1">${esc(ok)}</button></div></div>`;
+    const done=v=>{document.removeEventListener('keydown',kd,true); el.remove(); res(v);};
+    const kd=e=>{ if(e.key==='Escape'){e.preventDefault();e.stopPropagation();done(false);} else if(e.key==='Enter'&&!e.target.matches('input')){e.preventDefault();e.stopPropagation();done(true);} };
+    el.addEventListener('click',e=>{const b=e.target.closest('button[data-r]'); if(b) done(b.dataset.r==='1'); else if(e.target===el) done(false);});
+    document.addEventListener('keydown',kd,true);
+    document.body.appendChild(el); el.querySelector('.btn.pri').focus();
+  });
+}
 function copyLink(){
   const url=shareUrl();
   const done=()=>toast('คัดลอกลิงก์ห้องแล้ว ส่งให้เพื่อนได้เลย','ok');
-  if(navigator.clipboard&&window.isSecureContext) navigator.clipboard.writeText(url).then(done,()=>prompt('คัดลอกลิงก์นี้ส่งให้เพื่อน',url));
-  else prompt('คัดลอกลิงก์นี้ส่งให้เพื่อน',url);
+  if(navigator.clipboard&&window.isSecureContext) navigator.clipboard.writeText(url).then(done,()=>showLink(url));
+  else showLink(url);
 }
 function soloHTML(st){
   const other=S.players.find(p=>p.uid!==ACT);
@@ -235,13 +261,23 @@ function markCombat(){
 function boardAttack(target){
   const st=S.state, {opp}=sides(), op=pst(opp);
   const f=myField(st).find(([c])=>c.iid===atkSel); if(!f) return toast('เลือกผู้โจมตีก่อน','err');
-  const [A]=f, a=cinfo(A);
+  const [A]=f, a=cinfo(A), ae=eff(A);
   if(st.attacked&&st.attacked.includes(A.iid)) return toast('ใบนี้โจมตีไปแล้วในเฟสนี้ เลือกใบอื่น','err');
-  let text;
-  if(target==='player') text=`${a.name} โจมตี ${opp.name} โดยตรง → HP −${Math.max(1,eff(A).crit)}`;
-  else{const T=[...op.z.protect,...op.z.attack].find(c=>c.iid===target), d=cinfo(T);
-    text=d?hitText(a.name,d.name,calcHit(A,T)):`${a.name} โจมตีการ์ดคว่ำ`;}
-  if(confirm(text+'\n\nยืนยันโจมตี?')) act('attack',{iid:atkSel,target,atk_bonus:bonusA,def_bonus:bonusD});
+  const side=(cls,lab,name,val)=>`<div class="cfm-side ${cls}"><small>${lab}</small><b>${esc(name)}</b><span>${val}</span></div>`;
+  let html;
+  if(target==='player'){
+    const dmg=Math.max(1,ae.crit);
+    html=`<div class="cfm-vs">${side('me','ผู้โจมตี',a.name,'ATK '+ae.atk)}<div class="cfm-arrow">⚔</div>${side('foe','เป้าหมาย','ผู้เล่น '+opp.name,'HP '+op.z.hp.length)}</div>
+      <div class="cfm-res ok">โจมตีโดยตรง · HP −${dmg} (การ์ด HP ${dmg} ใบขึ้นมือฝั่งตรงข้าม)</div>`;
+  }else{
+    const T=[...op.z.protect,...op.z.attack].find(c=>c.iid===target), d=cinfo(T);
+    if(d){const k=calcHit(A,T);
+      html=`<div class="cfm-vs">${side('me','ผู้โจมตี',a.name,'ATK '+k.atk)}<div class="cfm-arrow">⚔</div>${side('foe','เป้าหมาย',d.name,'DEF '+k.rem)}</div>
+        <div class="cfm-res ${k.kill?'ok':'no'}">${k.kill?'เป้าหมายถูกทำลาย':'เป้าหมายเหลือ DEF '+k.after}</div>
+        ${k.counter?`<div class="cfm-res ${k.aDie?'bad':'mut'}">สวนกลับ ${k.back} → ${k.aDie?'ผู้โจมตีถูกทำลาย':'ผู้โจมตีเหลือ DEF '+k.aAfter}</div>`:''}`;
+    }else html=`<div class="cfm-vs">${side('me','ผู้โจมตี',a.name,'ATK '+ae.atk)}<div class="cfm-arrow">⚔</div>${side('foe','เป้าหมาย','การ์ดคว่ำ','?')}</div>`;
+  }
+  uiConfirm({title:'ยืนยันการโจมตี',html,ok:'โจมตี'}).then(y=>{ if(y) act('attack',{iid:atkSel,target,atk_bonus:bonusA,def_bonus:bonusD}); });
 }
 function protBtn(st){const on=st.p[ACT].protect_atk!==false;
   return `<button class="btn sm ${on?'on':''}" data-do="protatk" title="เปิด/ปิด ให้ Neurous ใน Protect Zone ของเราโจมตีได้">Protect โจมตี${on?'ได้':'ไม่ได้'}</button>`;}
@@ -269,8 +305,8 @@ document.addEventListener('click',e=>{
   else if(k==='ca') act('combat_act',{name:b.dataset.n});
   else if(k==='phase') act('phase',{to:b.dataset.to});
   else if(k==='code') act('code',{delta:+b.dataset.d});
-  else if(k==='concede'){if(confirm('ยืนยันยอมแพ้?')) act('concede');}
-  else if(k==='reset'){if(confirm('รีเซ็ตเกมและเริ่ม Setup ใหม่?')) act('reset');}
+  else if(k==='concede'){uiConfirm({title:'ยอมแพ้?',html:'<p style="margin:0">ยืนยันยอมแพ้ในเกมนี้ ผลแพ้จะถูกบันทึกทันที</p>',ok:'ยอมแพ้',tone:'danger'}).then(y=>y&&act('concede'));}
+  else if(k==='reset'){uiConfirm({title:'รีเซ็ตเกม?',html:'<p style="margin:0">เริ่ม Setup ใหม่ทั้งหมด การ์ดบนสนามและมือจะถูกรีเซ็ต</p>',ok:'รีเซ็ต',tone:'danger'}).then(y=>y&&act('reset'));}
   else if(k==='selatk'){atkSel=+b.dataset.i;panel();markCombat();}
   else if(k==='atk') act('attack',{iid:atkSel,target:b.dataset.t==='player'?'player':+b.dataset.t,atk_bonus:bonusA,def_bonus:bonusD});
   else if(k==='swap'){const o=S.players.find(p=>p.uid!==ACT); if(o){ACT=o.uid;render();}}
@@ -346,7 +382,7 @@ function stackMenu(e,stk){
   }
   if(zn==='delect') return openList(`Delect Zone ของ ${P.name}`,p.z.delect.slice().reverse(),'delect',side);
   if(!mine) return toast('ข้อมูลนี้ถูกซ่อนไว้');
-  if(zn==='hp') return showCtx(e.clientX,e.clientY,`<button data-k="view">ดูการ์ดใน HP</button><button data-k="hit">HP −1 (ลงกอง Delect)</button>`,
+  if(zn==='hp') return showCtx(e.clientX,e.clientY,`<button data-k="view">ดูการ์ดใน HP</button><button data-k="hit">HP −1 (การ์ด HP ขึ้นมือ)</button>`,
     b=>b.dataset.k==='view'?openList('Firewall Zone (HP) ของคุณ',p.z.hp,'hp','me'):act('hp_hit'));
   showCtx(e.clientX,e.clientY,`<button data-k="d1">จั่ว 1 ใบ</button><button data-k="d2">จั่ว 2 ใบ</button><button data-k="sh">สับเด็ค</button>
     <button data-k="p3">ดูบนสุด 3 ใบ</button><button data-k="p5">ดูบนสุด 5 ใบ</button><button data-k="all">ค้นทั้งเด็ค</button>`,

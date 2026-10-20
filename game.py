@@ -23,7 +23,8 @@ Z_TH = {'deck': 'Deck', 'hand': 'มือ', 'attack': 'Attack Zone', 'protect':
 
 
 def _log(room, who, text, kind='sys'):
-    room['log'].append({'t': int(time.time()), 'who': who, 'text': text, 'k': kind})
+    room['logn'] = room.get('logn', 0) + 1                   # เลขลำดับบันทึก ใช้ให้ฝั่งเว็บเล่นเสียงเฉพาะเหตุการณ์ใหม่
+    room['log'].append({'t': int(time.time()), 'n': room['logn'], 'who': who, 'text': text, 'k': kind})
     del room['log'][:-200]
 
 
@@ -125,19 +126,19 @@ def view(room, viewer):
 
 
 def _hit(room, victim_uid, n, by_uid):
-    """ลด HP ของ victim ลง n ใบ (ไปกอง Delect) ถ้า HP หมดแล้วยังโดนอีก = by_uid ชนะ"""
+    """ลด HP ของ victim ลง n ใบ (การ์ด HP ขึ้นมือเจ้าของ) ถ้า HP หมดแล้วยังโดนอีก = by_uid ชนะ"""
     s = room['state']
     z = s['p'][victim_uid]['z']
     for _ in range(n):
         if z['hp']:
             c = z['hp'].pop(0)
-            c['up'] = True
-            z['delect'].append(c)
+            c['up'], c['tap'] = False, False
+            z['hand'].append(c)
         else:
             s['winner'] = by_uid
             _log(room, 'ระบบ', f"{seat(room, victim_uid)['name']} ไม่มี HP เหลือ → {seat(room, by_uid)['name']} ชนะ!")
             return
-    _log(room, 'ระบบ', f"HP ของ {seat(room, victim_uid)['name']} เหลือ {len(z['hp'])}")
+    _log(room, 'ระบบ', f"HP ของ {seat(room, victim_uid)['name']} เหลือ {len(z['hp'])} (การ์ด HP ขึ้นมือ)")
 
 
 def _eff(room, c):
@@ -453,13 +454,13 @@ def act(room, uid, d):
         for _ in range(n):
             if z['hp']:
                 c = z['hp'].pop(0)
-                c['up'] = True
-                z['delect'].append(c)
+                c['up'], c['tap'] = False, False
+                z['hand'].append(c)
             else:
                 s['winner'] = opp['uid'] if opp else None
                 _log(room, 'ระบบ', f'{name} ไม่มี HP เหลือ → {opp["name"] if opp else "-"} ชนะ!')
                 return None, None
-        L(f'HP ลดลง {n} (เหลือ {len(z["hp"])})')
+        L(f'HP ลดลง {n} การ์ด HP ขึ้นมือ (เหลือ {len(z["hp"])})')
         return None, None
     if t == 'protect_atk':       # สวิตช์: การ์ดใน Protect Zone ของเราโจมตีได้ / ไม่ได้
         me['protect_atk'] = bool(d.get('on'))

@@ -1,0 +1,38 @@
+{% extends 'base.html' %}{% block title %}ผู้ใช้งาน{% endblock %}
+{% block content %}
+<div class="wrap">
+  <div class="row"><h1 style="font-size:2rem;margin:0">ผู้ใช้งานในระบบ</h1>
+    <span class="mut">ทั้งหมด {{ users|length }} คน · ออนไลน์ในห้องเล่น {{ users|selectattr('id','in',online)|list|length }} คน</span>
+    {% if current_user.is_admin %}<a class="btn sm right" href="{{ url_for('admin_users') }}">จัดการผู้ใช้</a>{% endif %}</div>
+  <div class="row" style="margin:14px 0">
+    <input id="uq" placeholder="ค้นหาชื่อผู้ใช้{{ ' หรืออีเมล' if current_user.is_admin }}…" style="max-width:360px" autocomplete="off">
+    <label class="row" style="gap:6px"><input type="checkbox" id="uon"> เฉพาะที่ออนไลน์</label>
+    <span class="mut" id="ucount"></span>
+  </div>
+  <div class="ugrid">
+    {% for u in users %}
+    <div class="ucard" data-s="{{ (u.username ~ ' ' ~ (u.email if current_user.is_admin else ''))|lower }}" data-on="{{ 1 if u.id in online else 0 }}">
+      {% if u.avatar %}<img class="av big" src="{{ u.avatar }}" alt="">{% else %}<span class="av big">{{ u.username[:1]|upper }}</span>{% endif %}
+      <div class="ubody">
+        <div class="row" style="gap:6px"><b>{{ u.username }}</b>
+          {% if u.id==current_user.id %}<span class="pill">คุณ</span>{% endif %}
+          {% if u.is_admin %}<span class="pill warn">Admin</span>{% endif %}
+          {% if u.id in online %}<span class="pill ok">ออนไลน์</span>{% endif %}
+          {% if current_user.is_admin and u.banned %}<span class="pill err">ถูกระงับ</span>{% elif current_user.is_admin and not u.verified %}<span class="pill">รอยืนยัน</span>{% endif %}</div>
+        {% if current_user.is_admin %}<div class="mono mut" style="font-size:.82rem">{{ u.email }}</div>{% endif %}
+        {% if u.bio %}<div class="ubio">{{ u.bio }}</div>{% endif %}
+        <div class="mut" style="font-size:.82rem">สมัครเมื่อ {{ u.created.strftime('%d/%m/%Y') }} · เด็คสาธารณะ {{ counts.get(u.id,0) }}</div>
+        {% if current_user.is_admin %}<a class="btn sm" style="margin-top:6px" href="{{ url_for('admin_user_edit', uid=u.id) }}">แก้ไขโปรไฟล์</a>{% endif %}
+      </div>
+    </div>
+    {% else %}<p class="mut">ยังไม่มีผู้ใช้งาน</p>{% endfor %}
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}<script>
+const $=s=>document.querySelector(s), cards=[...document.querySelectorAll('.ucard')];
+function f(){const q=$('#uq').value.trim().toLowerCase(), on=$('#uon').checked; let n=0;
+  cards.forEach(c=>{const ok=(!q||c.dataset.s.includes(q))&&(!on||c.dataset.on==='1'); c.style.display=ok?'':'none'; if(ok)n++;});
+  $('#ucount').textContent=`แสดง ${n} / ${cards.length} คน`;}
+$('#uq').addEventListener('input',f); $('#uon').addEventListener('change',f); f();
+</script>{% endblock %}

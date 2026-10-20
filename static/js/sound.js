@@ -40,6 +40,9 @@
     hit:()=>{tone(190,0,.24,'sawtooth',.4,50);tone(95,0,.28,'square',.25,40);},
     turn:()=>{tone(523,0,.14,'sine',.35);tone(784,.15,.24,'sine',.35);},
     dice:()=>{for(let i=0;i<10;i++) tone(420+Math.random()*420,i*.09+i*i*.007,.05,'square',.18);},
+    shuffle:()=>{for(let i=0;i<16;i++) tone(180+Math.random()*700,i*.032,.045,'triangle',.22);},
+    draw:()=>{tone(1100,0,.12,'triangle',.24,320);tone(2400,0,.03,'square',.07);},
+    discard:()=>{tone(260,0,.15,'sine',.42,80);tone(1400,0,.03,'square',.08);},
     land:()=>{tone(392,0,.12,'triangle',.4);tone(587,.11,.28,'triangle',.4);}
   };
   window.sfx=name=>{ if(on&&FX[name]) try{FX[name]();}catch(e){} };
