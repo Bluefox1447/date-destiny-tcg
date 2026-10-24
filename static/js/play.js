@@ -4,7 +4,8 @@ const CODE=document.body.dataset.room, MYID=+document.body.dataset.uid;
 let ACT=MYID, lastTurn=null, atkSel=null, bonusA=0, bonusD=0, combatOn=false;      // ACT = ฝั่งที่กำลังควบคุม (ห้องทดสอบสลับได้)
 const socket=io();
 const SLEEVE={me:'',opp:''};
-let S=null, mode=null, seated=false, autoPay=true, flipLabels=true, dragIid=null, dragCid=null, dragZone=null, lastRoll=null, prevTurn, lastLogN=null;
+let S=null, mode=null, seated=false, autoPay=true, flipLabels=true, dragIid=null, dragCid=null, dragZone=null, lastRoll=null, prevTurn, lastLogN=null, dragToken=null, statusMode=null, freeInit=false, freeSeen={}, MATS=[], MATSEL='b:classic';
+const FIELD=['attack','protect','partners','server','aura'];
 const DICE_TURNS=[3,5,7,9], LINK_MAX=3;
 const ZN={hp:'Firewall (HP)',partners:'Partners',attack:'Attack',protect:'Protect',server:'Server',delect:'Delect',deck:'Deck',hand:'มือ'};
 
@@ -20,6 +21,7 @@ socket.on('state',s=>{
     if(lastLogN===null) lastLogN=mx;
     else{const fresh=S.log.filter(l=>(l.n||0)>lastLogN&&l.k!=='chat'); lastLogN=mx; if(fresh.length) logSfx(fresh);}
   }
+  if(S.state) checkFreeRolls(S.state.rolls||{});
   const tn=S.state?S.state.turn:null; if(window.sfx&&prevTurn!==undefined&&tn&&tn!==prevTurn&&tn===MYID&&!S.solo) sfx('turn'); prevTurn=tn;
   const rl=S.state&&S.state.roll, rkey=rl?`${rl.id}-${rl.ts}`:'';      // ลูกเต๋า D4: เล่นอนิเมชันเมื่อมีการทอยใหม่
   if(lastRoll===null) lastRoll=rkey; else if(rkey&&rkey!==lastRoll){lastRoll=rkey;showDice(rl);} else if(!rkey) lastRoll=rkey;
@@ -57,7 +59,7 @@ function cardEl(c,zn,side,mini=true){
   const base=`data-iid="${c.iid}" data-zone="${zn}" data-side="${side}"${mine?' draggable="true"':''}`;
   if(back){const sl=SLEEVE[side]; return `<div class="card ${mini?'mini':''} back ${sl?'img':''} ${c.tap?'tap':''}" ${base}${sl?` style="background-image:url('${esc(sl)}')"`:''}>${sl?'':'<i>DD</i>'}</div>`;}
   const cd=S.cards[c.cid]; if(!cd) return '';
-  return cardHTML(cd,{mini,cls:(c.tap?'tap ':'')+(!c.up&&zn!=='hand'?'dn':''),attrs:base+` data-cid="${c.cid}"`,ctr:c.ctr,dmg:c.dmg,lnk:(c.links||[]).length,mod:c.mod});
+  return cardHTML(cd,{mini,cls:(c.tap?'tap ':'')+(!c.up&&zn!=='hand'?'dn':''),attrs:base+` data-cid="${c.cid}"`,ctr:c.ctr,dmg:c.dmg,lnk:(c.links||[]).length,mod:c.mod,st:c.st});
 }
 
 /* ---------------- Track (แถบเลข Code 1-10 ตามเสื่อ) ---------------- */
@@ -101,7 +103,7 @@ function render(){
   plate('#mePlate',me,mp); plate('#oppPlate',opp,op);
   $('#hand').innerHTML=mp?mp.z.hand.map(c=>cardEl(c,'hand','me',false)).join(''):'';
   $('#oppHand').innerHTML=op?op.z.hand.map(c=>cardEl(c,'hand','opp')).join(''):'';
-  panel();
+  panel(); updDiceLast();
   $('#log').innerHTML=S.log.map(l=>{const t=new Date(l.t*1000).toTimeString().slice(0,5);
     return `<div class="${l.k}"><time>${t}</time>${l.k==='chat'?`<b>${esc(l.who)}:</b> ${esc(l.text)}`:`${esc(l.who)} ${esc(l.text)}`}</div>`}).join('');
   $('#log').scrollTop=1e9;
@@ -226,7 +228,7 @@ function combatHTML(st,opp){
     if(!d) return `<div class="tg"><span class="nm">การ์ดคว่ำ (${zl})</span><button class="btn sm" data-do="atk" data-t="${t.iid}" ${spent?'disabled':''}>โจมตี</button></div>`;
     if(!NEU.includes(d.type)) return '';
     const k=calcHit(A,t);
-    return `<div class="tg"><span class="nm">${esc(d.name)} <small>${zl}${(t.links||[]).length?` · Link ${(t.links||[]).length}`:''}</small></span><b>ATK ${k.te.atk} / DEF ${k.rem}${t.dmg?` <small>(${k.full}−${t.dmg})</small>`:''}</b>
+    return `<div class="tg"><span class="nm">${esc(d.name)}${(t.st||[]).includes('blocker')?' 🛡':''} <small>${zl}${(t.links||[]).length?` · Link ${(t.links||[]).length}`:''}</small></span><b>ATK ${k.te.atk} / DEF ${k.rem}${t.dmg?` <small>(${k.full}−${t.dmg})</small>`:''}</b>
       <button class="btn sm ${k.kill?'pri':''}" data-do="atk" data-t="${t.iid}" ${spent?'disabled':''}>โจมตี</button>
       <div class="calc"><span class="${k.kill?'ok':'no'}">DEF ${k.rem} − ${k.atk} → ${k.kill?'ถูกทำลาย':'เหลือ '+k.after}</span>
       ${k.counter?`<span class="${k.aDie?'bad':'mut'}">สวนกลับ ${k.back} → ${k.aDie?'ผู้โจมตีถูกทำลาย':'ผู้โจมตีเหลือ DEF '+k.aAfter}</span>`:''}</div></div>`;
@@ -287,6 +289,8 @@ function toolsHTML(st){
    <div class="btns"><button class="btn sm" data-do="draw" data-n="1">จั่ว 1</button><button class="btn sm" data-do="shuffle">สับเด็ค</button>
    <button class="btn sm" data-do="peek" data-n="0">ค้นเด็ค</button><button class="btn sm" data-do="hp_hit" ${play?'':'disabled'}>HP −1</button></div>
    <div class="btns">${protBtn(st)}</div>
+   <label class="row" style="font-size:.88rem;gap:6px">Playmat <select id="matSel" style="max-width:190px">${MATS.map(o=>`<option value="${o.key}" ${o.key===MATSEL?'selected':''}>${esc(o.name)}</option>`).join('')}</select></label>
+   ${extrasHTML(true)}
    <div class="btns"><button class="btn sm" data-do="code" data-d="-1">Code −1</button><button class="btn sm" data-do="code" data-d="1">Code +1</button></div>
    ${play&&mine?`<div class="btns"><span class="mut" style="font-size:.8rem">ข้ามไปเฟส:</span>${['generate','combat'].map(p=>`<button class="btn sm" data-do="phase" data-to="${p}">${p}</button>`).join('')}</div>`:''}
    <label class="row" style="font-size:.88rem"><input type="checkbox" id="optPay" ${autoPay?'checked':''}> หักค่าคอส/Code อัตโนมัติตอน Summon/Move</label>
@@ -299,6 +303,7 @@ document.addEventListener('click',e=>{
   else if(k==='first') act('first',{who:b.dataset.who});
   else if(k==='generate') act('generate');
   else if(k==='fullscreen') toggleFS();
+  else if(k==='roll') act('roll',{sides:+b.dataset.s});
   else if(k==='protatk') act('protect_atk',{on:!(S.state&&S.state.p[ACT].protect_atk!==false)});
   else if(k==='draw') act('draw',{n:+b.dataset.n||1});
   else if(k==='peek') act('peek',{n:+b.dataset.n||0});
@@ -316,6 +321,7 @@ document.addEventListener('click',e=>{
 document.addEventListener('change',e=>{
   if(e.target.id==='bA'){bonusA=+e.target.value||0;panel();markCombat();}
   if(e.target.id==='bD'){bonusD=+e.target.value||0;panel();markCombat();}
+  if(e.target.id==='matSel') setMat(e.target.value);
   if(e.target.id==='optPay') autoPay=e.target.checked;
   if(e.target.id==='optFlip'){flipLabels=e.target.checked;$('#mat').classList.toggle('upright',!flipLabels);}
 });
@@ -331,7 +337,7 @@ function showCtx(x,y,html,cb){
 }
 document.addEventListener('click',e=>{if(!e.target.closest('#ctx'))closeCtx();},true);
 document.addEventListener('keydown',e=>{
-  if(e.key==='Escape'){closeCtx();closeModal();closeZoom();mode=null;}
+  if(e.key==='Escape'){closeCtx();closeModal();closeZoom();mode=null;statusMode=null;$$('[data-token]').forEach(x=>x.classList.remove('on'));}
   else if((e.key==='f'||e.key==='F')&&!e.ctrlKey&&!e.metaKey&&!e.target.matches('input,textarea,select')) toggleFS();
 });
 
@@ -358,11 +364,13 @@ function cardMenu(e,iid,zn){
   }
   if(inst&&(inst.links||[]).length&&['attack','protect'].includes(zn))
     h+=`<h4>ถอด Link</h4>`+inst.links.map(l=>`<div class="g"><button data-m="unlink" data-s="${l.iid}" data-to="delect">${esc((S.cards[l.cid]||{}).name)} → Delect</button><button data-m="unlink" data-s="${l.iid}" data-to="hand">→ มือ</button></div>`).join('');
+  if(inst&&FIELD.includes(zn)){const hb=(inst.st||[]).includes('blocker'); h+=`<button data-m="blk">${hb?'ถอด':'ติด'}สถานะบล็อคเกอร์ 🛡</button>`;}
   h+=`<h4>ย้ายไปที่</h4><div class="g">${D.filter(d=>d[0]!==zn).map(d=>`<button data-m="mv" data-to="${d[0]}">${d[1]}</button>`).join('')}
       <button data-m="mv" data-to="deck" data-pos="top">เด็ค (บนสุด)</button><button data-m="mv" data-to="deck" data-pos="bottom">เด็ค (ล่างสุด)</button></div>`;
   showCtx(e.clientX,e.clientY,h,b=>{
     const m=b.dataset.m;
     if(m==='zoom') return zoomCard(cid,iid);
+    if(m==='blk'){act('status',{iid,name:'blocker',on:!(inst.st||[]).includes('blocker')}); closeModal(); return;}
     if(m==='mv') act('move',{iid,to:b.dataset.to,pos:b.dataset.pos,pay:autoPay});
     else if(m==='tap') act('tap',{iid}); else if(m==='flip') act('flip',{iid});
     else if(m==='mod') return act('mod',{iid,stat:b.dataset.s,delta:+b.dataset.d});
@@ -398,9 +406,12 @@ $('#mclose').onclick=closeModal;
 $('#modal').addEventListener('click',e=>{if(e.target.id==='modal')closeModal();});
 
 document.addEventListener('click',e=>{
+  const bk=e.target.closest('.blk'); if(bk){const cd=bk.closest('.card[data-iid]'); if(cd) act('status',{iid:+cd.dataset.iid,name:'blocker',on:false}); return;}
+  const tk=e.target.closest('[data-token]'); if(tk){statusMode=statusMode?null:tk.dataset.token; $$('[data-token]').forEach(x=>x.classList.toggle('on',!!statusMode)); if(statusMode) toast('คลิกการ์ดบนสนามที่จะติดสถานะ (Esc เพื่อยกเลิก)'); return;}
   const stk=e.target.closest('.stack'); if(stk){stackMenu(e,stk);return;}
   const el=e.target.closest('.card[data-iid]'); if(!el) return;
   inspect(el);
+  if(statusMode&&FIELD.includes(el.dataset.zone)){act('status',{iid:+el.dataset.iid,name:statusMode,on:true}); statusMode=null; $$('[data-token]').forEach(x=>x.classList.remove('on')); return;}
   if(combatOn&&el.dataset.side==='opp'&&(el.dataset.zone==='attack'||el.dataset.zone==='protect')){boardAttack(+el.dataset.iid);return;}
   if(el.dataset.side!=='me'||!seated) return;
   const iid=+el.dataset.iid, zn=el.dataset.zone;
@@ -419,6 +430,7 @@ const instIndex=()=>{const m={}; if(!S||!S.state) return m;
   return m;};
 const findInst=iid=>instIndex()[iid]||null;
 function detailHTML(cd,inst){
+  const stl=inst&&(inst.st||[]).includes('blocker')?'<div class="imeta">สถานะ: 🛡 บล็อคเกอร์</div>':'';
   const neu=NEU.includes(cd.type), e=inst&&neu?eff(inst):null, sg=n=>(n>=0?'+':'')+n;
   let stats='';
   if(neu) stats=`<div class="isr"><span>ATK <b>${e?e.atk:cd.atk}</b></span><span>CRIT <b>${e?e.crit:cd.crit}</b></span><span>DEF <b>${e?e.def-(inst.dmg||0):cd.def}</b>${inst&&inst.dmg?` <small>/ ${e.def}</small>`:''}</span></div>`;
@@ -426,7 +438,7 @@ function detailHTML(cd,inst){
   const lk=inst&&(inst.links||[]).length?`<div class="islk"><b>Link ${inst.links.length}/${LINK_MAX}</b>${inst.links.map(l=>{const li=S.cards[l.cid]||{};
     return `<div>${esc(li.name)} <small>ATK ${sg(li.link_atk||0)} · CRIT ${sg(li.link_crit||0)} · DEF ${sg(li.link_def||0)}</small></div>`}).join('')}</div>`:'';
   const m=(inst&&inst.mod)||{}, buff=(m.atk||m.crit||m.def)?`<div class="imeta">บัพ/เดบัพ: ATK ${sg(m.atk||0)} · CRIT ${sg(m.crit||0)} · DEF ${sg(m.def||0)}</div>`:'';
-  return `<div class="iname">${esc(cd.name)}</div><div class="imeta">${TYPE_LABEL[cd.type]||cd.type} · Cost ${cd.cost}${cd.server?' · '+esc(cd.server):''}</div>${stats}${buff}${lk}
+  return `<div class="iname">${esc(cd.name)}</div><div class="imeta">${TYPE_LABEL[cd.type]||cd.type} · Cost ${cd.cost}${cd.server?' · '+esc(cd.server):''}</div>${stats}${buff}${stl}${lk}
     <div class="ieff">${esc(cd.effect)||'<span class="mut">ไม่มีเอฟเฟค</span>'}</div>`;
 }
 function inspect(el){
@@ -474,11 +486,17 @@ document.addEventListener('mouseover',e=>{const el=e.target.closest('.card[data-
 
 /* ---------------- ลากวางการ์ด ---------------- */
 const mineZone=z=>z&&seated&&(z.id==='hand'||z.closest('.half.me')||z.dataset.side==='me');
-document.addEventListener('dragstart',e=>{const c=e.target.closest('.card[draggable="true"]'); if(!c) return;
+document.addEventListener('dragstart',e=>{
+  const tk=e.target.closest('[data-token]'); if(tk){dragToken=tk.dataset.token; e.dataTransfer.setData('text/plain','token:'+dragToken); e.dataTransfer.effectAllowed='copy'; return;}
+  const c=e.target.closest('.card[draggable="true"]'); if(!c) return;
   dragIid=+c.dataset.iid; dragCid=c.dataset.cid; dragZone=c.dataset.zone; e.dataTransfer.setData('text/plain',String(dragIid)); e.dataTransfer.effectAllowed='move';});
-document.addEventListener('dragover',e=>{const z=e.target.closest('.zone,#hand'); if(mineZone(z)){e.preventDefault();z.classList.add('over');}});
-document.addEventListener('dragleave',e=>{e.target.closest?.('.zone,#hand')?.classList.remove('over');});
+document.addEventListener('dragover',e=>{
+  if(dragToken){const tc=e.target.closest('.card[data-iid]'); if(tc&&FIELD.includes(tc.dataset.zone)){e.preventDefault(); tc.classList.add('over');} return;}
+  const z=e.target.closest('.zone,#hand'); if(mineZone(z)){e.preventDefault();z.classList.add('over');}});
+document.addEventListener('dragleave',e=>{e.target.closest?.('.zone,#hand')?.classList.remove('over'); e.target.closest?.('.card')?.classList.remove('over');});
 document.addEventListener('drop',e=>{
+  if(dragToken){const tc=e.target.closest('.card[data-iid]'); e.preventDefault(); $$('.over').forEach(x=>x.classList.remove('over'));
+    if(tc&&FIELD.includes(tc.dataset.zone)) act('status',{iid:+tc.dataset.iid,name:dragToken,on:true}); else toast('ลากไปวางบนการ์ดที่อยู่บนสนาม','err'); dragToken=null; return;}
   const tc=e.target.closest('.card[data-iid]');          // ลากการ์ด Ship ไปวางบน Neurous = Link
   if(tc&&seated&&tc.dataset.side==='me'&&['attack','protect'].includes(tc.dataset.zone)&&dragIid!=null&&+tc.dataset.iid!==dragIid
      &&S.cards[dragCid]&&S.cards[dragCid].type==='ship'&&dragZone!=='aura'){
@@ -489,7 +507,53 @@ document.addEventListener('drop',e=>{
   $$('.over').forEach(x=>x.classList.remove('over'));
   if(dragIid!=null) act('move',{iid:dragIid,to:z.dataset.zone,pay:autoPay}); dragIid=null;
 });
-document.addEventListener('dragend',()=>$$('.over').forEach(x=>x.classList.remove('over')));
+document.addEventListener('dragend',()=>{dragToken=null; $$('.over').forEach(x=>x.classList.remove('over'));});
 
+/* ---------- สถานะบนการ์ด + ทอยเต๋าเล่น ---------- */
+function extrasHTML(compact){
+  const dice=[4,6,8,12,20].map(n=>`<button class="btn sm" data-do="roll" data-s="${n}">D${n}</button>`).join('');
+  return `<div class="extras ${compact?'compact':''}">
+    <h3>สถานะ</h3>
+    <div class="token" draggable="true" data-token="blocker" title="ลากไปวางบนการ์ด หรือคลิกแล้วคลิกการ์ด">${SHIELD}<span>บล็อคเกอร์</span></div>
+    ${compact?'':'<p class="hint">ลากไอคอนไปวางบนการ์ดใบไหนก็ได้บนสนาม สถานะจะติดที่มุมขวาบนของการ์ด คลิกโล่บนการ์ดเพื่อถอด</p>'}
+    <h3>ทอยเต๋า</h3><div class="dicebtns">${dice}</div>
+    ${compact?'':'<div class="dlast mut" data-dlast>ยังไม่มีการทอย</div>'}</div>`;
+}
+function updDiceLast(){
+  const el=$('[data-dlast]'); if(!el||!S||!S.state) return;
+  const rolls=S.state.rolls||{}, {me,opp}=sides();
+  const f=(P,lab)=>P&&rolls[P.uid]?`${lab} D${rolls[P.uid].sides} = <b>${rolls[P.uid].v}</b>`:`${lab} –`;
+  el.innerHTML=`${f(me,'คุณ')} · ${f(opp,'อีกฝ่าย')}`;
+}
+function checkFreeRolls(rolls){
+  if(!freeInit){for(const u in rolls) freeSeen[u]=`${rolls[u].id}-${rolls[u].ts}`; freeInit=true; return;}
+  for(const u in rolls){const k=`${rolls[u].id}-${rolls[u].ts}`; if(freeSeen[u]!==k){freeSeen[u]=k; showFree(+u,rolls);}}
+}
+function showFree(roller,rolls){
+  $('#dice3')?.remove(); const {me,opp}=sides();
+  const col=(P,cls,lab)=>{const r=P&&rolls[P.uid]; const rolling=P&&P.uid===roller;
+    return `<div class="dcol ${cls}"><div class="dname">${esc(P?P.name:'-')} <small>${lab}</small></div>
+      <div class="dx ${cls}" data-s="${r?r.sides:6}" ${rolling?'data-roll="1"':''}><span class="dn">${r?(rolling?'?':r.v):'–'}</span></div>
+      <div class="dlab">${r?'D'+r.sides+(rolling?'':' → <b>'+r.v+'</b>'):'ยังไม่ได้ทอย'}</div></div>`;};
+  const el=document.createElement('div'); el.id='dice3'; el.className='dice3';
+  el.innerHTML=`<div class="d3box"><div class="d3row">${col(me,'me','คุณ')}<div class="dvs">VS</div>${col(opp,'foe','อีกฝ่าย')}</div><button class="btn sm d3x" type="button">ปิด</button></div>`;
+  document.body.appendChild(el);
+  const close=()=>{el.classList.add('out'); setTimeout(()=>el.remove(),400);}; el.addEventListener('click',close);
+  const die=el.querySelector('.dx[data-roll]'), r=rolls[roller];
+  if(die&&r){ die.classList.add('rolling'); if(window.sfx) sfx('dice'); const n=die.querySelector('.dn'), lab=die.parentElement.querySelector('.dlab');
+    const iv=setInterval(()=>{n.textContent=1+Math.floor(Math.random()*r.sides);},70);
+    setTimeout(()=>{clearInterval(iv); n.textContent=r.v; die.classList.remove('rolling'); die.classList.add('land'); lab.innerHTML=`D${r.sides} → <b>${r.v}</b>`; if(window.sfx) sfx('land');},1200); }
+  setTimeout(close,4200);
+}
+/* ---------- Playmat ---------- */
+function applyMat(){
+  const m=$('#mat'), o=MATS.find(x=>x.key===MATSEL);
+  if(!o||(!o.image&&!o.css)){m.classList.remove('skin'); m.style.removeProperty('--mat-img'); return;}
+  m.classList.add('skin'); m.style.setProperty('--mat-img',o.image?`url('${o.image}')`:o.css);
+}
+async function setMat(k){MATSEL=k; applyMat(); try{await fetch('/api/me/playmat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:k})});}catch(e){}}
+async function loadMats(){try{const d=await (await fetch('/api/playmats')).json(); MATS=d.items||[]; MATSEL=d.selected||'b:classic'; applyMat(); if(S) panel();}catch(e){}}
+$('#stp').innerHTML=extrasHTML(false);
+loadMats();
 initTrack();
 })();

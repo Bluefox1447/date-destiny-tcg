@@ -15,6 +15,9 @@ NEUROUS = ('entity', 'partners')
 LINK_MAX = 3              # Ship ที่ Link เข้ากับ Neurous หนึ่งใบได้ไม่เกิน 3 ใบ
 DICE_TURNS = (3, 5, 7, 9) # เทิร์นที่ n ของผู้เล่นแต่ละคน ที่ได้ทอยลูกเต๋า D4 เป็นโค้ดโบนัส
 DICE_SIDES = 4
+DICE_FREE = (4, 6, 8, 12, 20)        # ลูกเต๋าทอยเล่น
+STATUSES = {'blocker': 'บล็อคเกอร์'}   # สถานะที่ลากวางบนการ์ดได้
+FIELD_ZONES = ('attack', 'protect', 'partners', 'server', 'aura')
 HP_START = 8
 HAND_START = 4
 Z_TH = {'deck': 'Deck', 'hand': 'มือ', 'attack': 'Attack Zone', 'protect': 'Protect Zone',
@@ -45,12 +48,12 @@ def other(room, uid):
 
 def _inst(room, cid):
     room['seq'] += 1
-    return {'iid': room['seq'], 'cid': int(cid), 'up': False, 'tap': False, 'ctr': 0, 'dmg': 0, 'links': [], 'mod': {'atk': 0, 'crit': 0, 'def': 0}}
+    return {'iid': room['seq'], 'cid': int(cid), 'up': False, 'tap': False, 'ctr': 0, 'dmg': 0, 'links': [], 'mod': {'atk': 0, 'crit': 0, 'def': 0}, 'st': []}
 
 
 def _new_state():
     return {'first': None, 'turn': None, 'phase': 'setup', 'turn_no': 0, 'combat_no': 1,
-            'acts': [], 'attacked': [], 'roll': None, 'roll_seq': 0, 'winner': None, 'p': {}}
+            'acts': [], 'attacked': [], 'roll': None, 'rolls': {}, 'roll_seq': 0, 'winner': None, 'p': {}}
 
 
 def _build(room, p):
@@ -114,7 +117,7 @@ def view(room, viewer):
                players=[{k: p[k] for k in ('uid', 'name', 'avatar', 'online', 'sleeve')} for p in room['players']],
                log=room['log'][-80:], spectators=len(room['spectators']), state=None)
     if s:
-        st = {k: s[k] for k in ('first', 'turn', 'phase', 'turn_no', 'combat_no', 'acts', 'attacked', 'roll', 'winner')}
+        st = {k: s[k] for k in ('first', 'turn', 'phase', 'turn_no', 'combat_no', 'acts', 'attacked', 'roll', 'rolls', 'winner')}
         st['p'] = {}
         for uid, p in s['p'].items():
             owner = uid == viewer or reveal
@@ -163,7 +166,8 @@ def _drop_links(z, c):
         ln['up'], ln['tap'] = True, False
         z['delect'].append(ln)
     c['links'] = []
-    c['mod'] = {'atk': 0, 'crit': 0, 'def': 0}     # ออกจากสนาม/ถูกทำลาย: ล้างบัพ
+    c['mod'] = {'atk': 0, 'crit': 0, 'def': 0}     # ออกจากสนาม/ถูกทำลาย: ล้างบัพและสถานะ
+    c['st'] = []
 
 
 def find(me, iid):
@@ -462,6 +466,39 @@ def act(room, uid, d):
                 return None, None
         L(f'HP ลดลง {n} การ์ด HP ขึ้นมือ (เหลือ {len(z["hp"])})')
         return None, None
+    if t == 'roll':              # ทอยลูกเต๋าเล่น ๆ D4/D6/D8/D12/D20 (ทั้งสองฝั่งเห็นผล)
+        try:
+            sides = int(d.get('sides', 0))
+        except (TypeError, ValueError):
+            sides = 0
+        if sides not in DICE_FREE:
+            return 'ลูกเต๋าไม่ถูกต้อง', None
+        now = time.time()
+        if now - me.get('last_roll', 0) < 1.2:
+            return 'ทอยถี่เกินไป รอสักครู่', None
+        me['last_roll'] = now
+        v = random.randint(1, sides)
+        s['roll_seq'] += 1
+        s['rolls'][uid] = {'sides': sides, 'v': v, 'id': s['roll_seq'], 'ts': int(now * 1000)}
+        L(f'ทอยลูกเต๋า D{sides} ได้ {v}')
+        return None, None
+    if t == 'status':           # วางสถานะ (เช่น บล็อคเกอร์) ลงการ์ดใบไหนก็ได้บนสนาม (ของใครก็ได้)
+        name_ = d.get('name')
+        if name_ not in STATUSES:
+            return 'สถานะไม่ถูกต้อง', None
+        target = None
+        for pz in s['p'].values():
+            for zn in FIELD_ZONES:
+                target = target or next((x for x in pz['z'][zn] if x['iid'] == d.get('iid')), None)
+        if not target:
+            return 'วางสถานะได้เฉพาะการ์ดที่อยู่บนสนาม', None
+        on = bool(d.get('on', True))
+        if on and name_ not in target['st']:
+            target['st'].append(name_)
+        elif not on and name_ in target['st']:
+            target['st'].remove(name_)
+        L(f"{'ติด' if on else 'ถอด'}สถานะ {STATUSES[name_]} {'ให้' if on else 'ออกจาก'} {_cname(room, target)}")
+        return None, None
     if t == 'protect_atk':       # สวิตช์: การ์ดใน Protect Zone ของเราโจมตีได้ / ไม่ได้
         me['protect_atk'] = bool(d.get('on'))
         L('ตั้งค่า Protect Zone: ' + ('โจมตีได้' if me['protect_atk'] else 'โจมตีไม่ได้'))
@@ -569,6 +606,8 @@ def act(room, uid, d):
             _drop_links(z, c)
         c['tap'] = False
         c['dmg'] = 0
+        if to in ('hand', 'deck', 'hp', 'delect'):
+            c['st'] = []                 # ออกจากสนาม: สถานะหาย
         c['up'] = bool(d['up']) if 'up' in d else (to not in ('deck', 'hand', 'hp'))
         if to == 'deck':
             z['deck'].insert(0, c) if d.get('pos', 'top') == 'top' else z['deck'].append(c)

@@ -16,6 +16,7 @@ class User(UserMixin, db.Model):
     role = db.Column(db.String(10), default='user')          # user | admin
     verified = db.Column(db.Boolean, default=False)
     banned = db.Column(db.Boolean, default=False)
+    playmat = db.Column(db.String(40), default='')      # สกิน Playmat ที่เลือก: '' | 'b:<ชื่อ>' | 'u:<id>'
     google_id = db.Column(db.String(64), index=True)
     discord_id = db.Column(db.String(64), index=True)
     code = db.Column(db.String(10))
@@ -76,6 +77,18 @@ class Track(db.Model):
 
     def to_dict(self):
         return dict(id=self.id, title=self.title, url=self.url)
+
+
+class Playmat(db.Model):
+    """สกิน Playmat (ภาพพื้นสนาม) ที่ Admin อัปโหลด ผู้เล่นเลือกใช้ได้"""
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(80), nullable=False)
+    image = db.Column(db.String(300), default='')
+    is_default = db.Column(db.Boolean, default=False)
+    created = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return dict(key=f'u:{self.id}', name=self.name, image=self.image or '', default=bool(self.is_default))
 
 
 class Sleeve(db.Model):

@@ -520,3 +520,54 @@ body.fs.drawer-open .drawertab{left:360px}
 .ucard{display:flex;gap:14px;align-items:flex-start;border:3px solid var(--line);border-radius:var(--r);background:var(--mat);padding:14px}
 .av.big{width:58px;height:58px;font-size:1.5rem;flex:none}
 .ubody{display:grid;gap:3px;min-width:0}.ubio{font-size:.9rem;color:#dfe2e6;overflow-wrap:anywhere}
+
+/* Playmat: ตัวเลือกในโปรไฟล์ / หน้า Admin / สกินบนสนาม */
+.pmprev{width:150px;aspect-ratio:1795/2045;border:3px solid var(--line);border-radius:14px;background:var(--mat) center/cover no-repeat}
+.pmgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:10px;margin:6px 0 16px}
+.pmopt{display:grid;gap:6px;justify-items:center;background:none;border:3px solid #7d7f84;border-radius:14px;padding:8px;color:var(--ink);font:inherit;font-size:.82rem;cursor:pointer}
+.pmopt.on{border-color:var(--sig);box-shadow:0 0 0 2px rgba(98,214,255,.4)}.pmopt:hover{border-color:#fff}
+.pmthumb{display:block;width:100%;aspect-ratio:1795/2045;border-radius:8px;border:2px solid rgba(255,255,255,.7);background:var(--mat) center/cover no-repeat}
+.mat.skin{background:var(--mat-img) center/cover no-repeat,var(--mat)}
+.mat.skin .zone{background-color:rgba(0,0,0,.24)}
+
+/* ===== สถานะบนการ์ด / ทอยเต๋าเล่น / คำอธิบาย Command ===== */
+.kwb.kCMD{background:linear-gradient(90deg,#f5b400,#ff7a00);color:#2b1700}
+.stp{position:absolute;right:6px;top:6px;bottom:6px;z-index:2;width:min(300px,max(0px,calc((100cqw - min(100cqw,100cqh*.878))/2 - 14px)));overflow:auto;display:flex;flex-direction:column;gap:8px;padding-left:2px}
+@container (max-width:860px){.stp{display:none}}
+.extras h3{margin:4px 0 6px;font-size:1rem;color:#fff}
+.stp .extras{background:rgba(0,0,0,.30);border-radius:12px;padding:10px 12px}
+.token{display:inline-flex;align-items:center;gap:8px;border:2px solid #7d7f84;border-radius:12px;padding:6px 12px;cursor:grab;background:rgba(255,255,255,.06);user-select:none}
+.token svg{width:26px;height:26px}.token:hover,.token.on{border-color:var(--sig);background:rgba(98,214,255,.14)}
+.token.on{box-shadow:0 0 0 2px rgba(98,214,255,.45)}
+.hint{margin:6px 0 4px;font-size:.78rem;color:#cfd3d8;line-height:1.4}
+.dicebtns{display:flex;flex-wrap:wrap;gap:6px}.dicebtns .btn{min-width:48px;justify-content:center}
+.dlast{margin-top:8px;font-size:.88rem}
+.extras.compact{margin-top:8px}.extras.compact h3{font-size:.9rem}
+.blk{position:absolute;right:.25em;top:.25em;z-index:4;display:grid;place-items:center;font-size:max(1.5em,15px);width:1.3em;height:1.3em;cursor:pointer;filter:drop-shadow(0 2px 3px rgba(0,0,0,.65))}
+.blk svg{width:100%;height:100%}.blk:hover{transform:scale(1.15)}
+.card.over{outline:3px solid var(--sig);outline-offset:2px}
+/* หน้าต่างทอยเต๋าเล่น (ฝ่ายเรา VS อีกฝ่าย) */
+.dice3{position:fixed;inset:0;z-index:96;display:grid;place-items:center;background:radial-gradient(circle,rgba(98,214,255,.16),rgba(10,10,12,.7));animation:cfin .2s ease-out}
+.dice3.out{opacity:0;transition:opacity .4s}
+.d3box{position:relative;background:var(--mat);border:3px solid var(--line);border-radius:26px;padding:26px 34px 22px;box-shadow:0 24px 70px rgba(0,0,0,.6)}
+.d3row{display:flex;gap:26px;align-items:center}
+.dcol{display:grid;justify-items:center;gap:10px;min-width:150px}
+.dname{font-weight:600;font-size:1.1rem}.dname small{color:var(--mut)}
+.dlab{font-size:1.25rem;min-height:1.6em}.dlab b{font:700 1.7rem var(--mono);color:var(--sig)}
+.dcol.foe .dlab b{color:var(--warn)}
+.dvs{font:800 1.5rem var(--mono);color:#fff;opacity:.8}
+.d3x{position:absolute;right:12px;top:10px}
+.dx{width:124px;height:124px;position:relative;display:grid;place-items:center;filter:drop-shadow(0 12px 14px rgba(0,0,0,.5))}
+.dx::before{content:'';position:absolute;inset:0}
+.dx.me::before{background:linear-gradient(160deg,#9be9ff,#3b82f6 55%,#1b3a80)}
+.dx.foe::before{background:linear-gradient(160deg,#ffd29b,#ff7a45 55%,#8a2a12)}
+.dx[data-s="4"]::before{clip-path:polygon(50% 4%,100% 96%,0 96%)}
+.dx[data-s="6"]::before{border-radius:20px}
+.dx[data-s="8"]::before{clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%)}
+.dx[data-s="12"]::before{clip-path:polygon(50% 0,100% 38%,82% 100%,18% 100%,0 38%)}
+.dx[data-s="20"]::before{clip-path:polygon(25% 5%,75% 5%,100% 50%,75% 95%,25% 95%,0 50%)}
+.dx .dn{position:relative;z-index:1;font:800 2.5rem var(--mono);color:#fff;text-shadow:0 2px 0 rgba(0,0,0,.5)}
+.dx[data-s="4"] .dn{margin-top:26%}
+.dx.rolling{animation:d4roll 1.2s cubic-bezier(.22,.8,.3,1) both}
+.dx.land{animation:d4pop .55s ease both}
+@media(max-width:640px){.d3row{flex-direction:column}.d3box{padding:22px 18px}}

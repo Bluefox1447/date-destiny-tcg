@@ -14,7 +14,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
 from authlib.integrations.flask_client import OAuth
 
-from models import db, User, Card, Deck, News, Sleeve, Upload, Track
+from models import db, User, Card, Deck, News, Sleeve, Upload, Track, Playmat
 import game
 
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -911,6 +911,87 @@ def deck_import():
         return redirect(url_for('decks'))
 
 
+# ---------------------------------------------------------------- Playmat (สกินพื้นสนาม)
+BUILTIN_MATS = [
+    dict(key='b:classic', name='คลาสสิก (เทา)', css='', image=''),
+    dict(key='b:midnight', name='Midnight', css='linear-gradient(160deg,#16233f,#2a3f73 55%,#0f1a33)', image=''),
+    dict(key='b:crimson', name='Crimson', css='linear-gradient(160deg,#3a0f18,#7a1f33 55%,#2a0a12)', image=''),
+    dict(key='b:aurora', name='Aurora', css='linear-gradient(160deg,#0f3d3a,#1f6f66 45%,#3b2a6f)', image=''),
+]
+
+
+def playmat_options():
+    items = [dict(o, builtin=True) for o in BUILTIN_MATS] + [dict(p.to_dict(), css='', builtin=False) for p in Playmat.query.order_by(Playmat.id)]
+    return items
+
+
+def playmat_selected(user):
+    keys = {o['key'] for o in playmat_options()}
+    if user.playmat in keys and user.playmat != '':
+        return user.playmat
+    d = Playmat.query.filter_by(is_default=True).first()
+    return f'u:{d.id}' if d else 'b:classic'
+
+
+@app.get('/api/playmats')
+@login_required
+def api_playmats():
+    return jsonify(items=playmat_options(), selected=playmat_selected(current_user))
+
+
+@app.post('/api/me/playmat')
+@login_required
+def api_set_playmat():
+    key = str((request.get_json(silent=True) or {}).get('key', ''))
+    if key not in {o['key'] for o in playmat_options()}:
+        return jsonify(ok=False, error='ไม่พบ Playmat นี้'), 400
+    current_user.playmat = key
+    db.session.commit()
+    return jsonify(ok=True, selected=key)
+
+
+@app.route('/admin/playmats', methods=['GET', 'POST'])
+@admin_required
+def admin_playmats():
+    if request.method == 'POST':
+        f = request.files.get('image')
+        url = save_upload(f, 'playmats') if f and f.filename else None
+        if not url:
+            flash('เลือกรูป PNG/JPG/WebP ขนาดไม่เกิน 6MB สำหรับ Playmat', 'err')
+            return redirect(url_for('admin_playmats'))
+        p = Playmat(name=request.form.get('name', '').strip()[:80] or 'Playmat', image=url)
+        if request.form.get('is_default'):
+            Playmat.query.update({Playmat.is_default: False})
+            p.is_default = True
+        db.session.add(p)
+        db.session.commit()
+        flash('เพิ่ม Playmat แล้ว', 'ok')
+        return redirect(url_for('admin_playmats'))
+    return render_template('admin/playmats.html', items=Playmat.query.order_by(Playmat.id.desc()).all())
+
+
+@app.post('/admin/playmats/<int:pid>/default')
+@admin_required
+def admin_playmat_default(pid):
+    p = db.get_or_404(Playmat, pid)
+    was = p.is_default
+    Playmat.query.update({Playmat.is_default: False})
+    p.is_default = not was
+    db.session.commit()
+    return redirect(url_for('admin_playmats'))
+
+
+@app.post('/admin/playmats/<int:pid>/delete')
+@admin_required
+def admin_playmat_delete(pid):
+    p = db.get_or_404(Playmat, pid)
+    User.query.filter_by(playmat=f'u:{pid}').update({User.playmat: ''})
+    db.session.delete(p)
+    db.session.commit()
+    flash('ลบ Playmat แล้ว', 'ok')
+    return redirect(url_for('admin_playmats'))
+
+
 # ---------------------------------------------------------------- เพลงประกอบ
 @app.get('/api/music')
 def api_music():
@@ -1183,6 +1264,10 @@ def migrate():
     cols = {c['name'] for c in inspect(db.engine).get_columns('deck')}
     if 'sleeve_id' not in cols:
         db.session.execute(text('ALTER TABLE deck ADD COLUMN sleeve_id INTEGER'))
+        db.session.commit()
+    ucols = {c['name'] for c in inspect(db.engine).get_columns('user')}
+    if 'playmat' not in ucols:
+        db.session.execute(text('ALTER TABLE "user" ADD COLUMN playmat VARCHAR(40)'))
         db.session.commit()
 
 

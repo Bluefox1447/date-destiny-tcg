@@ -20,6 +20,8 @@ function badges(o){
   if(o.lnk) b.push(`<span class="lnk" title="Ship ที่ Link อยู่">🔗${o.lnk}/3</span>`);
   return b.length?`<div class="bdg">${b.join('')}</div>`:'';
 }
+const SHIELD='<svg viewBox="0 0 24 24" width="1em" height="1em" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3z" fill="#4da3ff" stroke="#fff" stroke-width="1.6"/></svg>';
+function statusBadge(o){return (o.st||[]).includes('blocker')?`<span class="blk" title="สถานะบล็อคเกอร์ (คลิกเพื่อถอด)">${SHIELD}</span>`:'';}
 function cardHTML(c,o={}){
   if(!c) return '';
   if(c.image){   // Admin อัปโหลดภาพการ์ดสำเร็จรูป → แสดงภาพนั้นเป็นตัวการ์ดเลย
@@ -27,7 +29,7 @@ function cardHTML(c,o={}){
     // รวม style เป็นอันเดียว (เบราว์เซอร์ใช้ style แรกอันเดียว ถ้าซ้ำรูปการ์ดจะหาย)
     let st=`background-image:url('${esc(c.image)}')`, at=(o.attrs||'').replace(/\stitle="[^"]*"/g,'');
     at=at.replace(/\sstyle="([^"]*)"/g,(m,x)=>{st+=';'+x;return '';});
-    return `<div class="${cls}" ${at} title="${esc(c.name)}" style="${st}">${badges(o)}</div>`;
+    return `<div class="${cls}" ${at} title="${esc(c.name)}" style="${st}">${badges(o)}${statusBadge(o)}</div>`;
   }
   const stats=c.type==='entity'||c.type==='partners'
     ? `<span title="พลังโจมตี">ATK ${c.atk}</span><span title="คริ">CRT ${c.crit}</span><span title="ป้องกัน">DEF ${c.def}</span>`
@@ -35,7 +37,7 @@ function cardHTML(c,o={}){
     ? `<span title="Link โจมตี">L1 ${c.link_atk}</span><span title="Link คริ">L2 ${c.link_crit}</span><span title="Link ป้องกัน">L3 ${c.link_def}</span>` : '';
   const cls=['card','c-'+c.color,'t-'+c.type,o.mini?'mini':'',o.big?'big':'',o.cls||''].join(' ');
   return `<div class="${cls}" ${o.attrs||''} title="${esc(c.name)}">
-    ${badges(o)}
+    ${badges(o)}${statusBadge(o)}
     <div class="cc-top"><span class="cc-cost">${c.cost}</span><span class="cc-name">${esc(c.name)}</span></div>
     <div class="cc-art"></div>
     <div class="cc-type"><span>${TYPE_LABEL[c.type]||c.type}</span><span>${esc(c.server)}</span></div>
