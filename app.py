@@ -925,6 +925,11 @@ def playmat_options():
     return items
 
 
+def playmat_default_key():
+    d = Playmat.query.filter_by(is_default=True).first()
+    return f'u:{d.id}' if d else 'b:classic'
+
+
 def playmat_selected(user):
     keys = {o['key'] for o in playmat_options()}
     if user.playmat in keys and user.playmat != '':
@@ -1135,9 +1140,11 @@ def room_create():
     name = request.form.get('name', '').strip()[:40] or (f'ทดสอบเด็คของ {current_user.username}' if solo else f'ห้องของ {current_user.username}')
     with game.LOCK:
         room = game.create_room(code, name, current_user.id, solo=solo)
-        game.add_player(room, current_user.id, current_user.username, current_user.avatar, deck, cards)
+        hp = game.add_player(room, current_user.id, current_user.username, current_user.avatar, deck, cards)
+        hp['playmat'] = playmat_selected(current_user)          # ให้อีกฝ่ายเห็น Playmat ของเรา
         if solo:
-            game.add_player(room, -current_user.id, 'ฝั่งทดสอบ', '', deck2, cards2)
+            dp = game.add_player(room, -current_user.id, 'ฝั่งทดสอบ', '', deck2, cards2)
+            dp['playmat'] = playmat_default_key()
     return redirect(url_for('room_play', code=code))
 
 
@@ -1178,6 +1185,8 @@ def on_join(d):
         p = game.seat(room, current_user.id)
         if p:
             p['sid'], p['online'] = request.sid, True
+            if p['uid'] > 0:
+                p['playmat'] = playmat_selected(current_user)
         elif len(room['players']) < 2 and not d.get('spectate'):
             if not d.get('deck_id'):
                 emit('need_deck', {})
@@ -1187,6 +1196,7 @@ def on_join(d):
                 return emit('err', {'m': cards})
             p = game.add_player(room, current_user.id, current_user.username, current_user.avatar, deck, cards)
             p['sid'] = request.sid
+            p['playmat'] = playmat_selected(current_user)
         else:
             room['spectators'][request.sid] = current_user.username
         push(room)
@@ -1204,7 +1214,18 @@ def on_act(d):
             actor = current_user.id
             if room.get('solo') and actor == room['host'] and d.get('as') == -actor:
                 actor = -actor                      # ห้องทดสอบ: เจ้าของห้องควบคุมฝั่งหุ่นได้
-            err, extra = game.act(room, actor, d)
+            if d.get('type') == 'playmat':          # เปลี่ยน Playmat ระหว่างเกม: อีกฝ่ายเห็นทันที
+                seat = game.seat(room, actor)
+                key = str(d.get('key', ''))
+                if not seat:
+                    err = 'ผู้ชมเปลี่ยน Playmat ไม่ได้'
+                elif key not in {o['key'] for o in playmat_options()}:
+                    err = 'ไม่พบ Playmat นี้'
+                else:
+                    seat['playmat'], err = key, None
+                extra = None
+            else:
+                err, extra = game.act(room, actor, d)
         except (KeyError, ValueError, TypeError) as e:
             err, extra = f'ข้อมูลไม่ถูกต้อง: {e}', None
         if err:

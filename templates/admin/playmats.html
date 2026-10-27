@@ -6,11 +6,11 @@
     <form method="post" enctype="multipart/form-data" class="box">
       <h2>เพิ่มสกิน Playmat</h2>
       <label class="f"><span>ชื่อสกิน</span><input name="name" maxlength="80" placeholder="เช่น Dragon Mat" required></label>
-      <label class="f"><span>รูปพื้นสนาม (PNG/JPG/WebP ไม่เกิน 6MB · แนะนำสัดส่วนแนวตั้งประมาณ 1795×2045)</span><input type="file" name="image" accept="image/*" id="pmfile" required></label>
+      <label class="f"><span>รูปพื้นสนาม (PNG/JPG/WebP ไม่เกิน 6MB) · รูปแนวตั้ง (~1795×2045) จะใช้ครึ่งล่างของรูปเป็นฝั่งของผู้เลือก · รูปแนวนอนจะครอบทั้งครึ่งฝั่งของผู้เลือก</span><input type="file" name="image" accept="image/*" id="pmfile" required></label>
       <div style="display:grid;justify-items:center;margin-bottom:14px"><div id="pmpv" class="pmprev"></div></div>
       <label class="row" style="margin-bottom:14px"><input type="checkbox" name="is_default"> ใช้เป็น Playmat เริ่มต้นของผู้ที่ยังไม่เลือกเอง</label>
       <button class="btn pri">เพิ่ม Playmat</button>
-      <p class="mut" style="font-size:.85rem;margin-top:10px">ผู้เล่นเลือกสกินได้ในหน้า "โปรไฟล์" และในห้องเล่น (เครื่องมือ → Playmat) รูปจะถูกครอบให้เต็มกรอบสนาม เส้นโซนสีขาวจะซ้อนบนรูป ควรใช้รูปโทนไม่สว่างจัดเพื่อให้อ่านชื่อโซนได้</p>
+      <p class="mut" style="font-size:.85rem;margin-top:10px">ผู้เล่นเลือกสกินได้ในหน้า "โปรไฟล์" และในห้องเล่น (เครื่องมือ → Playmat) ผู้เล่นแต่ละคนเห็น Playmat ของตัวเองที่ครึ่งล่าง และเห็น Playmat ของอีกฝ่ายที่ครึ่งบน (หมุน 180°) เส้นโซนสีขาวซ้อนอยู่บนรูป ควรใช้รูปโทนไม่สว่างจัดเพื่อให้อ่านชื่อโซนได้</p>
     </form>
     <div class="pool" style="justify-items:center;align-content:start;grid-template-columns:repeat(auto-fill,minmax(200px,1fr))">
       {% for p in items %}

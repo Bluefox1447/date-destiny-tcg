@@ -100,7 +100,7 @@ function render(){
   });
   updTrack('#trkMe','#cdMe',mp?mp.code:0); updTrack('#trkOpp','#cdOpp',op?op.code:0);
   [['me',mp],['opp',op]].forEach(([sd,P])=>{const sm=$(`.half.${sd} .z-protect .lbl small`); if(sm&&P) sm.textContent=`(MAX 3 Entity) · ${P.protect_atk===false?'โจมตีไม่ได้':'โจมตีได้'}`;});
-  plate('#mePlate',me,mp); plate('#oppPlate',opp,op);
+  plate('#mePlate',me,mp); plate('#oppPlate',opp,op); applyMat();
   $('#hand').innerHTML=mp?mp.z.hand.map(c=>cardEl(c,'hand','me',false)).join(''):'';
   $('#oppHand').innerHTML=op?op.z.hand.map(c=>cardEl(c,'hand','opp')).join(''):'';
   panel(); updDiceLast();
@@ -289,7 +289,7 @@ function toolsHTML(st){
    <div class="btns"><button class="btn sm" data-do="draw" data-n="1">จั่ว 1</button><button class="btn sm" data-do="shuffle">สับเด็ค</button>
    <button class="btn sm" data-do="peek" data-n="0">ค้นเด็ค</button><button class="btn sm" data-do="hp_hit" ${play?'':'disabled'}>HP −1</button></div>
    <div class="btns">${protBtn(st)}</div>
-   <label class="row" style="font-size:.88rem;gap:6px">Playmat <select id="matSel" style="max-width:190px">${MATS.map(o=>`<option value="${o.key}" ${o.key===MATSEL?'selected':''}>${esc(o.name)}</option>`).join('')}</select></label>
+   <label class="row" style="font-size:.88rem;gap:6px">Playmat <select id="matSel" style="max-width:190px">${MATS.map(o=>`<option value="${o.key}" ${o.key===curMatKey()?'selected':''}>${esc(o.name)}</option>`).join('')}</select></label>
    ${extrasHTML(true)}
    <div class="btns"><button class="btn sm" data-do="code" data-d="-1">Code −1</button><button class="btn sm" data-do="code" data-d="1">Code +1</button></div>
    ${play&&mine?`<div class="btns"><span class="mut" style="font-size:.8rem">ข้ามไปเฟส:</span>${['generate','combat'].map(p=>`<button class="btn sm" data-do="phase" data-to="${p}">${p}</button>`).join('')}</div>`:''}
@@ -546,12 +546,22 @@ function showFree(roller,rolls){
   setTimeout(close,4200);
 }
 /* ---------- Playmat ---------- */
-function applyMat(){
-  const m=$('#mat'), o=MATS.find(x=>x.key===MATSEL);
-  if(!o||(!o.image&&!o.css)){m.classList.remove('skin'); m.style.removeProperty('--mat-img'); return;}
-  m.classList.add('skin'); m.style.setProperty('--mat-img',o.image?`url('${o.image}')`:o.css);
+const matCss=key=>{const o=MATS.find(x=>x.key===key); return (!o||(!o.image&&!o.css))?'':(o.image?`url('${o.image}')`:o.css);};
+function curMatKey(){ if(S){const {me}=sides(); if(me&&me.uid!==MYID) return me.playmat||'b:classic';} return MATSEL; }
+function applyMat(){   // ครึ่งล่างใช้ Playmat ของฝั่งเรา ครึ่งบนใช้ของอีกฝ่าย (ฝั่งตรงข้ามถูกหมุน 180° ใน CSS)
+  const m=$('#mat'); if(!m) return;
+  let meKey=MATSEL, oppKey='b:classic';
+  if(S){const {me,opp}=sides(); if(me) meKey=me.uid===MYID?MATSEL:(me.playmat||'b:classic'); if(opp) oppKey=opp.playmat||'b:classic';}
+  [['me',meKey],['opp',oppKey]].forEach(([sd,k])=>{const css=matCss(k); m.classList.toggle('skin-'+sd,!!css);
+    if(css) m.style.setProperty('--mat-img-'+sd,css); else m.style.removeProperty('--mat-img-'+sd);});
 }
-async function setMat(k){MATSEL=k; applyMat(); try{await fetch('/api/me/playmat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:k})});}catch(e){}}
+async function setMat(k){
+  const own=!S||ACT===MYID;                       // เปลี่ยนของตัวเอง → บันทึกเข้าบัญชีด้วย (ห้องทดสอบที่คุมฝั่งหุ่นจะไม่แตะบัญชี)
+  if(own) MATSEL=k;
+  if(S) socket.emit('act',{code:CODE,type:'playmat',key:k,...(ACT!==MYID?{as:ACT}:{})});
+  applyMat();
+  if(own){try{await fetch('/api/me/playmat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:k})});}catch(e){}}
+}
 async function loadMats(){try{const d=await (await fetch('/api/playmats')).json(); MATS=d.items||[]; MATSEL=d.selected||'b:classic'; applyMat(); if(S) panel();}catch(e){}}
 $('#stp').innerHTML=extrasHTML(false);
 loadMats();

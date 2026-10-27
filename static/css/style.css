@@ -527,8 +527,15 @@ body.fs.drawer-open .drawertab{left:360px}
 .pmopt{display:grid;gap:6px;justify-items:center;background:none;border:3px solid #7d7f84;border-radius:14px;padding:8px;color:var(--ink);font:inherit;font-size:.82rem;cursor:pointer}
 .pmopt.on{border-color:var(--sig);box-shadow:0 0 0 2px rgba(98,214,255,.4)}.pmopt:hover{border-color:#fff}
 .pmthumb{display:block;width:100%;aspect-ratio:1795/2045;border-radius:8px;border:2px solid rgba(255,255,255,.7);background:var(--mat) center/cover no-repeat}
-.mat.skin{background:var(--mat-img) center/cover no-repeat,var(--mat)}
-.mat.skin .zone{background-color:rgba(0,0,0,.24)}
+/* Playmat สองฝั่ง: ครึ่งล่าง (แดง) = ของเรา · ครึ่งบน (น้ำเงิน) = ของอีกฝ่าย หมุน 180° เหมือนมองข้ามโต๊ะ */
+.mat{position:relative;overflow:hidden}
+.matbg{position:absolute;left:0;right:0;z-index:0;pointer-events:none;display:none;background-size:cover;background-position:center bottom;background-repeat:no-repeat}
+.matbg.opp{top:0;height:49.5%;transform:rotate(180deg)}
+.matbg.me{bottom:0;height:50.5%}
+.mat.skin-opp .matbg.opp{display:block;background-image:var(--mat-img-opp)}
+.mat.skin-me .matbg.me{display:block;background-image:var(--mat-img-me)}
+.mat.skin-opp .half.opp .zone,.mat.skin-opp .zone[data-side="opp"]{background-color:rgba(0,0,0,.24)}
+.mat.skin-me .half.me .zone,.mat.skin-me .zone[data-side="me"]{background-color:rgba(0,0,0,.24)}
 
 /* ===== สถานะบนการ์ด / ทอยเต๋าเล่น / คำอธิบาย Command ===== */
 .kwb.kCMD{background:linear-gradient(90deg,#f5b400,#ff7a00);color:#2b1700}

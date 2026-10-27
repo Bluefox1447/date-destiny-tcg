@@ -74,7 +74,7 @@ def _build(room, p):
 
 def add_player(room, uid, name, avatar, deck, cards):
     room['cards'].update({str(k): v for k, v in cards.items()})
-    p = dict(uid=uid, name=name, avatar=avatar, sid=None, online=True, deck=deck, sleeve=deck.get('sleeve', ''))
+    p = dict(uid=uid, name=name, avatar=avatar, sid=None, online=True, deck=deck, sleeve=deck.get('sleeve', ''), playmat='')
     room['players'].append(p)
     if room['state'] is None:
         room['state'] = _new_state()
@@ -114,7 +114,7 @@ def view(room, viewer):
     s = room['state']
     reveal = bool(room.get('solo')) and viewer == room['host']      # ห้องทดสอบ: เจ้าของห้องเห็นทุกฝั่ง
     out = dict(code=room['code'], name=room['name'], host=room['host'], solo=bool(room.get('solo')), rules={'counter': COUNTER_DAMAGE}, cards=room['cards'],
-               players=[{k: p[k] for k in ('uid', 'name', 'avatar', 'online', 'sleeve')} for p in room['players']],
+               players=[dict({k: p[k] for k in ('uid', 'name', 'avatar', 'online', 'sleeve')}, playmat=p.get('playmat', '')) for p in room['players']],
                log=room['log'][-80:], spectators=len(room['spectators']), state=None)
     if s:
         st = {k: s[k] for k in ('first', 'turn', 'phase', 'turn_no', 'combat_no', 'acts', 'attacked', 'roll', 'rolls', 'winner')}
