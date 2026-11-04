@@ -591,7 +591,6 @@ body.fs.drawer-open .drawertab{left:360px}
 .pennant.big{width:min(300px,22vw);aspect-ratio:364/548}.pennant.wait{opacity:.5}
 .lobby{position:fixed;inset:0;z-index:97;background:#767676;display:grid;grid-template-columns:minmax(0,1fr) minmax(170px,.7fr) minmax(0,1fr);grid-template-rows:auto 1fr auto;gap:2vh 3vw;padding:6vh 8vw 4vh;overflow:auto;
   background-image:linear-gradient(135deg,transparent 49.7%,rgba(15,208,255,.22) 50%,transparent 50.3%),linear-gradient(45deg,transparent 49.7%,rgba(15,208,255,.18) 50%,transparent 50.3%);background-size:46vh 46vh}
-.lb-frame{position:absolute;inset:14px;pointer-events:none;border:10px solid #0fd0ff;clip-path:polygon(70px 0,calc(100% - 70px) 0,100% 70px,100% calc(100% - 70px),calc(100% - 70px) 100%,70px 100%,0 calc(100% - 70px),0 70px)}
 .lb-title{grid-column:1/4;justify-self:center;align-self:start}
 .lb-title span{display:block;background:#10c1e0;color:#fff;font-size:clamp(1.6rem,3.2vw,2.6rem);padding:8px 90px;border:3px solid #2f6df0;clip-path:polygon(7% 0,93% 0,100% 50%,93% 100%,7% 100%,0 50%);text-shadow:0 0 14px rgba(255,255,255,.7)}
 .lb-col{display:grid;justify-items:center;align-content:start;gap:14px;min-width:0}.lb-col.l{grid-column:1;grid-row:2}.lb-col.r{grid-column:3;grid-row:2}
