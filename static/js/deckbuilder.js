@@ -41,7 +41,7 @@ function render(){
   pool();
 }
 
-/* ---------- คลังการ์ดฝั่งขวา ---------- */
+/* ---------- วิกิการ์ดฝั่งขวา ---------- */
 function pool(){
   const q=$('#q').value.toLowerCase(),t=$('#ft').value,c=$('#fc').value,o=$('#fo').value;
   const l=ALL.filter(x=>(!t||x.type===t)&&(!c||x.color===c)&&(!q||(x.name+x.effect+x.server+x.code).toLowerCase().includes(q)));
@@ -98,7 +98,7 @@ $('#dsleeve').addEventListener('change',e=>{deck.sleeve=e.target.value; sleeveUI
 $('#undo').onclick=undo; $('#redo').onclick=redo;
 $('#clear').onclick=()=>{ if(!confirm('ล้างการ์ดทั้งหมดในเด็คนี้?')) return; push(); deck.main={}; deck.partners=[]; render(); };
 $('#sort').onclick=()=>{const k=Object.keys(SORTS); sortMode=k[(k.indexOf(sortMode)+1)%k.length]; $('#sort').textContent='เรียง: '+SORTS[sortMode]; render();};
-document.addEventListener('keydown',e=>{ if(e.target.matches('input,textarea,select')) return;
+document.addEventListener('keydown',e=>{ if(e.target.matches&&e.target.matches('input,textarea,select')) return;
   if((e.ctrlKey||e.metaKey)&&e.key==='z'){e.preventDefault();undo();} if((e.ctrlKey||e.metaKey)&&e.key==='y'){e.preventDefault();redo();} });
 ['q','ft','fc','fo'].forEach(i=>$('#'+i).addEventListener('input',pool));
 async function save(){
@@ -111,5 +111,27 @@ $('#save').onclick=async()=>{const j=await save(); if(j) location.href='/decks?s
 $('#copy').onclick=async()=>{const j=await save(); if(!j) return; const r=await (await fetch('/api/decks/'+j.id+'/code')).json();
   try{await navigator.clipboard.writeText(r.code);toast('คัดลอกโค้ดเด็คแล้ว','ok')}catch(e){prompt('คัดลอกโค้ดนี้',r.code)}};
 window.addEventListener('beforeunload',e=>{ if(dirty){e.preventDefault();e.returnValue='';} });
+/* ---------- คลิกขวาที่การ์ด → ขยายการ์ด (แสดงรายละเอียดทั้งหมด) ---------- */
+function zoomDetail(c){
+  const sg=n=>(n>=0?'+':'')+n;
+  const st=NEU.includes(c.type)?`<div class="isr"><span>ATK <b>${c.atk}</b></span><span>CRIT <b>${c.crit}</b></span><span>DEF <b>${c.def}</b></span></div>`
+    :c.type==='ship'?`<div class="isr"><span>Link ATK <b>${sg(c.link_atk)}</b></span><span>CRIT <b>${sg(c.link_crit)}</b></span><span>DEF <b>${sg(c.link_def)}</b></span></div>`:'';
+  return `<div class="iname">${esc(c.name)}</div>
+    <div class="imeta">${esc(c.code||'')} · ${esc(TLABEL[c.type]||c.type)} · สี${esc(CLABEL[c.color]||c.color)} · Cost ${c.cost}${c.server?' · เซิร์ฟเวอร์ '+esc(c.server):''}</div>${st}
+    <div class="ieff">${esc(c.effect)||'<span class="mut">ไม่มีเอฟเฟค</span>'}</div>
+    <div class="imeta">ในเด็คนี้: ${owned(c.id)} ใบ (สูงสุด ${MAX_COPIES} ใบ)</div>`;
+}
+function openZoom(id){const c=BY[id]; if(!c) return; $('#zvc').innerHTML=cardHTML(c,{big:true}); $('#zvt').innerHTML=zoomDetail(c); $('#zoomb').classList.remove('hide');}
+const closeZoomB=()=>$('#zoomb').classList.add('hide');
+$('#zbx').onclick=closeZoomB; $('#zoomb').addEventListener('click',e=>{if(e.target.id==='zoomb') closeZoomB();});
+let cmenu=null; const closeMenu=()=>{if(cmenu){cmenu.remove();cmenu=null;}};
+document.addEventListener('contextmenu',e=>{
+  const t=e.target.closest('.pc,.dc'); closeMenu(); if(!t||!BY[t.dataset.id]) return; e.preventDefault();
+  cmenu=document.createElement('div'); cmenu.className='ctx'; cmenu.innerHTML='<button type="button">🔍 ขยายการ์ด</button>';
+  cmenu.style.left=Math.min(e.clientX,innerWidth-210)+'px'; cmenu.style.top=Math.min(e.clientY,innerHeight-70)+'px';
+  cmenu.firstChild.onclick=()=>{closeMenu(); openZoom(+t.dataset.id);}; document.body.appendChild(cmenu);
+});
+document.addEventListener('click',e=>{ if(cmenu&&!e.target.closest('.ctx')) closeMenu(); },true);
+document.addEventListener('keydown',e=>{ if(e.key==='Escape'){closeMenu();closeZoomB();} });
 fetch('/api/cards').then(r=>r.json()).then(d=>{ALL=d; d.forEach(c=>BY[c.id]=c); sleeveUI(); render();});
 })();

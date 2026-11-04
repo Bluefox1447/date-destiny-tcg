@@ -1,7 +1,7 @@
-{% extends 'base.html' %}{% block title %}คลังการ์ด{% endblock %}
+{% extends 'base.html' %}{% block title %}วิกิการ์ด{% endblock %}
 {% block content %}
 <div class="wrap">
-  <div class="row"><h1 style="font-size:2rem">คลังการ์ด</h1><span class="mut" id="count"></span>
+  <div class="row"><h1 style="font-size:2rem">วิกิการ์ด</h1><span class="mut" id="count"></span>
     {% if current_user.is_authenticated and current_user.is_admin %}<a class="btn pri right" href="{{ url_for('admin_card_form') }}">เพิ่มการ์ด</a>{% endif %}</div>
   <div class="filters">
     <input id="q" placeholder="ค้นหาชื่อ เอฟเฟค หรือเซิร์ฟเวอร์">

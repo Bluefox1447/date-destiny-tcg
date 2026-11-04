@@ -4,8 +4,9 @@ const CODE=document.body.dataset.room, MYID=+document.body.dataset.uid;
 let ACT=MYID, lastTurn=null, atkSel=null, bonusA=0, bonusD=0, combatOn=false;      // ACT = ฝั่งที่กำลังควบคุม (ห้องทดสอบสลับได้)
 const socket=io();
 const SLEEVE={me:'',opp:''};
-let S=null, mode=null, seated=false, autoPay=true, flipLabels=true, dragIid=null, dragCid=null, dragZone=null, lastRoll=null, prevTurn, lastLogN=null, dragToken=null, statusMode=null, freeInit=false, freeSeen={}, MATS=[], MATSEL='b:classic';
+let S=null, mode=null, seated=false, autoPay=true, flipLabels=true, dragIid=null, dragCid=null, dragZone=null, lastRoll=null, prevTurn, lastLogN=null, lobbyDone=false, mullDismissed=false, mullSel=new Set(), mullDrag=null, revealInit=false, revealSeen=null, geassInit=false, geassSeen={}, dragToken=null, statusMode=null, freeInit=false, freeSeen={}, MATS=[], MATSEL='b:classic';
 const FIELD=['attack','protect','partners','server','aura'];
+const GHEX={blue:'#2f8bff',red:'#ff3b4e',yellow:'#ffd23a',green:'#34d27b',purple:'#a15cff',black:'#15151a'}, GTH={blue:'ฟ้า',red:'แดง',yellow:'เหลือง',green:'เขียว',purple:'ม่วง',black:'ดำ'};
 const DICE_TURNS=[3,5,7,9], LINK_MAX=3;
 const ZN={hp:'Firewall (HP)',partners:'Partners',attack:'Attack',protect:'Protect',server:'Server',delect:'Delect',deck:'Deck',hand:'มือ'};
 
@@ -21,7 +22,7 @@ socket.on('state',s=>{
     if(lastLogN===null) lastLogN=mx;
     else{const fresh=S.log.filter(l=>(l.n||0)>lastLogN&&l.k!=='chat'); lastLogN=mx; if(fresh.length) logSfx(fresh);}
   }
-  if(S.state) checkFreeRolls(S.state.rolls||{});
+  if(S.state){checkFreeRolls(S.state.rolls||{}); checkReveal(S.state.reveal); checkGeass(S.state);}
   const tn=S.state?S.state.turn:null; if(window.sfx&&prevTurn!==undefined&&tn&&tn!==prevTurn&&tn===MYID&&!S.solo) sfx('turn'); prevTurn=tn;
   const rl=S.state&&S.state.roll, rkey=rl?`${rl.id}-${rl.ts}`:'';      // ลูกเต๋า D4: เล่นอนิเมชันเมื่อมีการทอยใหม่
   if(lastRoll===null) lastRoll=rkey; else if(rkey&&rkey!==lastRoll){lastRoll=rkey;showDice(rl);} else if(!rkey) lastRoll=rkey;
@@ -108,24 +109,16 @@ function render(){
     return `<div class="${l.k}"><time>${t}</time>${l.k==='chat'?`<b>${esc(l.who)}:</b> ${esc(l.text)}`:`${esc(l.who)} ${esc(l.text)}`}</div>`}).join('');
   $('#log').scrollTop=1e9;
   markCombat();
-  banner();
+  overlays(); updGeassUI();
 }
 function plate(sel,P,p){
   const el=$(sel);
   if(!P){el.innerHTML='<span class="mut">รอผู้เล่น…</span>';return;}
   const st=S.state, turn=st&&st.turn===P.uid;
-  el.innerHTML=`<span class="dot ${P.online?'on':''}" style="width:10px;height:10px;border-radius:50%;display:inline-block"></span><b>${esc(P.name)}</b>${P.uid===ACT?'<span class="mut">(คุณควบคุม)</span>':''}
+  el.innerHTML=`<span class="dot ${P.online?'on':''}" style="width:10px;height:10px;border-radius:50%;display:inline-block"></span><b>${esc(P.name)}</b>${P.uid===ACT?'<span class="mut">(คุณควบคุม)</span>':''}${p&&p.geass?`<span class="gchip" style="--gc:${GHEX[p.geass.color]}" title="กีอัสสี${GTH[p.geass.color]}">กีอัส ${GTH[p.geass.color]}</span>`:''}
    ${turn?'<span class="turnmark">กำลังเล่น</span>':''}
    ${p?`<span class="mut mono" style="font-size:.8rem">HP ${p.z.hp.length} · Deck ${p.z.deck} · มือ ${p.z.hand.length} · Code ${p.code}</span>`:''}`;
 }
-function banner(){
-  $('#banner')?.remove(); const st=S.state; if(!st||st.winner==null) return;
-  const d=document.createElement('div'); d.className='banner'; d.id='banner';
-  d.innerHTML=`<div><h1>${!S.solo&&st.winner===MYID?'คุณชนะ!':esc(nameOf(st.winner))+' ชนะ'}</h1><p class="mut">เกมจบแล้ว</p>
-   ${S.host===MYID?'<button class="btn pri" data-do="reset">เล่นใหม่ (รีเซ็ต)</button>':'<p class="mut">รอเจ้าของห้องกดเล่นใหม่</p>'}</div>`;
-  document.body.appendChild(d);
-}
-
 /* ---------------- Side panel ---------------- */
 function panel(){
   combatOn=false;
@@ -177,7 +170,7 @@ function setupHTML(mp,op,opp,st){
       st.first?'':`<span class="btns">${B('first','สุ่ม',false,'data-who="random"')}${B('first','ฉัน',false,'data-who="me"')}${B('first','เขา',false,'data-who="opp"')}</span>`)}
    ${row(su.placed,'2. วาง Partners 4 ใบลง Partners Zone แล้วสับเด็ค',su.placed?'':B('place','วาง',false))}
    ${row(su.drew,'3. จั่ว 4 ใบขึ้นมือ',su.drew?'':B('setup_draw','จั่ว',!su.placed))}
-   ${row(su.mull,'   เปลี่ยนมือได้ 1 ครั้ง',su.mull||su.hp?'':B('mulligan','เปลี่ยน',!su.drew))}
+   ${row(su.mull,'   เปลี่ยนมือได้ 1 ครั้ง',su.mull||su.hp?'':B('mull','เปลี่ยน',!su.drew))}
    ${row(su.hp,'4. วางการ์ด 8 ใบลง HP (คว่ำ)',su.hp?'':B('setup_hp','วาง HP',!su.drew))}
    ${row(su.ready,'5. พร้อมเริ่มเกม',su.ready?'':B('ready','พร้อม',!(su.placed&&su.drew&&su.hp&&st.first)))}
   </div><p class="mut" style="font-size:.85rem;margin:0">คู่ต่อสู้: ${op.setup.ready?'พร้อมแล้ว':'กำลังเตรียม…'}</p>`;
@@ -301,6 +294,11 @@ document.addEventListener('click',e=>{
   const b=e.target.closest('[data-do]'); if(!b) return; const k=b.dataset.do;
   if(['place','setup_draw','mulligan','setup_hp','ready','shuffle','end_turn','add_combat','undo_act','hp_hit'].includes(k)) act(k);
   else if(k==='first') act('first',{who:b.dataset.who});
+  else if(k==='mull'){mullDismissed=false; overlays();}
+  else if(k==='lobby_next'){lobbyDone=true; act('lobby_ready',{on:true}); overlays();}
+  else if(k==='lobby_copy') copyLink();
+  else if(k==='win_again') act('reset');
+  else if(k==='geass') act('geass',{color:b.dataset.c});
   else if(k==='generate') act('generate');
   else if(k==='fullscreen') toggleFS();
   else if(k==='roll') act('roll',{sides:+b.dataset.s});
@@ -321,6 +319,7 @@ document.addEventListener('click',e=>{
 document.addEventListener('change',e=>{
   if(e.target.id==='bA'){bonusA=+e.target.value||0;panel();markCombat();}
   if(e.target.id==='bD'){bonusD=+e.target.value||0;panel();markCombat();}
+  if(e.target.id==='lobbyDeck') act('deck',{deck_id:+e.target.value});
   if(e.target.id==='matSel') setMat(e.target.value);
   if(e.target.id==='optPay') autoPay=e.target.checked;
   if(e.target.id==='optFlip'){flipLabels=e.target.checked;$('#mat').classList.toggle('upright',!flipLabels);}
@@ -516,6 +515,9 @@ function extrasHTML(compact){
     <h3>สถานะ</h3>
     <div class="token" draggable="true" data-token="blocker" title="ลากไปวางบนการ์ด หรือคลิกแล้วคลิกการ์ด">${SHIELD}<span>บล็อคเกอร์</span></div>
     ${compact?'':'<p class="hint">ลากไอคอนไปวางบนการ์ดใบไหนก็ได้บนสนาม สถานะจะติดที่มุมขวาบนของการ์ด คลิกโล่บนการ์ดเพื่อถอด</p>'}
+    <h3>กีอัส</h3>
+    <div class="geassbtns">${Object.keys(GHEX).map(c=>`<button type="button" class="gbtn" data-do="geass" data-c="${c}" style="--gc:${GHEX[c]}" title="กีอัสสี${GTH[c]}" aria-label="กีอัสสี${GTH[c]}"></button>`).join('')}</div>
+    ${compact?'':'<p class="hint">ผู้เล่นทั้งสองฝ่ายกดได้ทุกเมื่อ กดสีเดิมซ้ำเพื่อปิด สีที่เลือกจะแสดงข้างชื่อผู้เล่นให้ทั้งห้องเห็น</p>'}
     <h3>ทอยเต๋า</h3><div class="dicebtns">${dice}</div>
     ${compact?'':'<div class="dlast mut" data-dlast>ยังไม่มีการทอย</div>'}</div>`;
 }
@@ -544,6 +546,112 @@ function showFree(roller,rolls){
     const iv=setInterval(()=>{n.textContent=1+Math.floor(Math.random()*r.sides);},70);
     setTimeout(()=>{clearInterval(iv); n.textContent=r.v; die.classList.remove('rolling'); die.classList.add('land'); lab.innerHTML=`D${r.sides} → <b>${r.v}</b>`; if(window.sfx) sfx('land');},1200); }
   setTimeout(close,4200);
+}
+/* ---------- กีอัส ---------- */
+function updGeassUI(){
+  if(!S||!S.state) return; const g=S.state.p[ACT]&&S.state.p[ACT].geass;
+  $$('.gbtn').forEach(b=>b.classList.toggle('on',!!g&&b.dataset.c===g.color));
+}
+function checkGeass(st){
+  for(const uid in st.p){const g=st.p[uid].geass, k=g?`${g.id}-${g.ts}`:'';
+    if(!geassInit){geassSeen[uid]=k; continue;}
+    if(k&&geassSeen[uid]!==k){geassSeen[uid]=k; showGeassFx(+uid,g.color);} else if(!k) geassSeen[uid]=k;}
+  geassInit=true;
+}
+function showGeassFx(uid,color){
+  $('#geassfx')?.remove(); const el=document.createElement('div'); el.id='geassfx'; el.className='geassfx'; el.style.setProperty('--gc',GHEX[color]);
+  el.innerHTML=`<div class="gx-eye"><i></i></div><div class="gx-t">GEASS</div><div class="gx-s">${esc(nameOf(uid))} · สี${GTH[color]}</div>`;
+  document.body.appendChild(el); if(window.sfx) sfx('geass'); setTimeout(()=>el.classList.add('out'),1400); setTimeout(()=>el.remove(),1900);
+}
+/* ---------- หน้าต่างบังคับ/หน้าจอสำคัญ ---------- */
+const avatarBox=(P,cls='')=>`<div class="pennant ${cls}" ${P&&P.avatar?`style="background-image:url('${esc(P.avatar)}')"`:''}>${P&&!P.avatar?`<span>${esc((P.name||'?').slice(0,1).toUpperCase())}</span>`:''}</div>`;
+function overlays(){
+  banner(); lobby(); mullPick(); combatPick();
+}
+function lobby(){
+  const st=S.state, me=S.players.find(p=>p.uid===MYID), show=!!me&&!S.solo&&st&&st.phase==='setup'&&!me.ready&&!lobbyDone&&st.winner==null;
+  let el=$('#lobby'); if(!show){ if(el) el.remove(); return; }
+  const opp=S.players.find(p=>p.uid!==MYID), decks=[...$('#deckSel').options].map(o=>({id:+o.value,name:o.text}));
+  const lab=(P)=>`<div class="lb-name ${P&&P.ready?'ok':'no'}"><span>${esc(P?P.name:'รอผู้เล่น…')}</span></div>`;
+  const key=JSON.stringify([me.ready,me.deck_id,me.name,me.avatar,opp&&[opp.name,opp.ready,opp.avatar,opp.online]]);
+  if(el&&el.dataset.k===key) return;
+  const opts=decks.map(d=>`<option value="${d.id}" ${d.id===me.deck_id?'selected':''}>${esc(d.name)}</option>`).join('');
+  const html=`<div class="lb-frame"></div><div class="lb-title"><span>${S.host===MYID?'สร้างห้อง':'เข้าร่วมห้อง'}</span></div>
+    <div class="lb-col l">${lab(me)}${avatarBox(me,'big')}
+      <label class="lb-deck"><select id="lobbyDeck" aria-label="เด็คของคุณ">${opts||'<option>ยังไม่มีเด็คที่พร้อมเล่น</option>'}</select></label></div>
+    <div class="lb-vs">VS</div>
+    <div class="lb-col r">${lab(opp)}${opp?avatarBox(opp,'big'):'<div class="pennant big wait"><span>?</span></div>'}
+      ${opp?`<div class="lb-state ${opp.ready?'ok':''}">${opp.ready?'พร้อมแล้ว':'ยังไม่พร้อม'}</div>`:`<button class="btn sm" data-do="lobby_copy">คัดลอกลิงก์ห้อง</button>`}</div>
+    <button class="lb-next" data-do="lobby_next" type="button"><span>NEXT</span></button>
+    <div class="lb-hint">เลือกเด็คแล้วกด NEXT เพื่อเข้าห้องเล่น · ชื่อสีเขียว = พร้อมแล้ว · สีแดง = ยังไม่กด NEXT</div>`;
+  if(!el){el=document.createElement('div'); el.id='lobby'; el.className='lobby'; document.body.appendChild(el);}
+  el.dataset.k=key; el.innerHTML=html;
+}
+function mullPick(){
+  const st=S.state, me=st&&st.p[ACT], su=me&&me.setup, hand=me?me.z.hand:[];
+  const show=!!S.players.find(p=>p.uid===MYID)&&st&&st.phase==='setup'&&su&&su.drew&&!su.mull&&!su.hp&&!mullDismissed&&hand.length;
+  let el=$('#mull'); if(!show){ if(el) el.remove(); mullSel.clear(); return; }
+  [...mullSel].forEach(i=>{if(!hand.some(c=>c.iid===i)) mullSel.delete(i);});
+  const selected=hand.filter(c=>mullSel.has(c.iid)), rest=hand.filter(c=>!mullSel.has(c.iid));
+  const slotTop=i=>{const c=selected[i]; return `<div class="mslot top ${c?'has':''}">${c?cardEl({...c,up:true,tap:false},'hand','me',false).replace('<div class="card','<div data-miid="'+c.iid+'" class="card'):'<svg viewBox="0 0 64 64" class="refresh" aria-hidden="true"><path d="M52 32a20 20 0 1 1-6-14" fill="none" stroke="#12c9ff" stroke-width="6" stroke-linecap="round"/><path d="M50 8v14H36" fill="none" stroke="#12c9ff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg>'}</div>`;};
+  const slotBot=i=>{const c=rest[i]; return `<div class="mslot bot ${c?'has':''}">${c?cardEl({...c,up:true,tap:false},'hand','me',false).replace('<div class="card','<div data-miid="'+c.iid+'" class="card'):'<span>การ์ดบนมือ</span>'}</div>`;};
+  const n=hand.length, rows=(f)=>[...Array(n).keys()].map(f).join('');
+  const html=`<div class="mull-box"><div class="mull-head"><b>เปลี่ยนการ์ดบนมือ</b> <span class="mut">ลากหรือคลิกการ์ดที่ต้องการเปลี่ยนขึ้นไปด้านบน แล้วกดยืนยัน (เปลี่ยนได้ 1 ครั้ง)</span></div>
+    <div class="mrow top" data-row="top">${rows(slotTop)}</div>
+    <div class="mrow bot" data-row="bot">${rows(slotBot)}</div>
+    <div class="mull-btns"><button class="btn" data-m="hide" type="button">ซ่อนไว้ก่อน</button><button class="btn" data-m="skip" type="button">ไม่เปลี่ยน</button>
+      <button class="btn pri" data-m="ok" type="button" ${selected.length?'':'disabled'}>ยืนยันเปลี่ยน ${selected.length} ใบ</button></div></div>`;
+  if(!el){el=document.createElement('div'); el.id='mull'; el.className='mull'; document.body.appendChild(el);
+    el.addEventListener('click',e=>{
+      const bt=e.target.closest('[data-m]'); if(bt){const m=bt.dataset.m;
+        if(m==='hide'){mullDismissed=true; overlays();} else if(m==='skip'){act('mulligan',{iids:[]});} else if(m==='ok'){act('mulligan',{iids:[...mullSel]}); mullSel.clear();} return;}
+      const c=e.target.closest('[data-miid]'); if(c){const i=+c.dataset.miid; mullSel.has(i)?mullSel.delete(i):mullSel.add(i); mullPick();}});
+    el.addEventListener('dragstart',e=>{const c=e.target.closest('[data-miid]'); if(c){mullDrag=+c.dataset.miid; e.dataTransfer.setData('text/plain','m'+mullDrag); e.dataTransfer.effectAllowed='move';}});
+    el.addEventListener('dragover',e=>{if(mullDrag!=null&&e.target.closest('[data-row]')) e.preventDefault();});
+    el.addEventListener('drop',e=>{const row=e.target.closest('[data-row]'); if(!row||mullDrag==null) return; e.preventDefault();
+      row.dataset.row==='top'?mullSel.add(mullDrag):mullSel.delete(mullDrag); mullDrag=null; mullPick();});
+    el.addEventListener('dragend',()=>{mullDrag=null;});
+  }
+  el.innerHTML=html;
+}
+function combatPick(){
+  const st=S.state, me=st&&st.p[ACT];
+  const show=!!S.players.find(p=>p.uid===MYID)&&st&&st.phase==='combat'&&st.turn===ACT&&st.winner==null&&st.acts.length<st.combat_no;
+  let el=$('#cph'); if(!show){ if(el) el.remove(); return; }
+  if(el) return;
+  el=document.createElement('div'); el.id='cph'; el.className='cph';
+  el.innerHTML=`<div class="cph-title"><span>COMBAT PHASE</span></div><div class="cph-sub">เลือก 1 อย่างสำหรับ Combat Phase ${st.combat_no}/2</div>
+    <div class="cph-cards">${[['summon','SUMMON','เรียก Neurous ลงสนาม จ่ายค่าคอสการ์ด'],['combat','COMBAT','ให้ Neurous ต่อสู้กัน หรือโจมตีผู้เล่น'],['move','MOVE','ย้าย Neurous ระหว่าง Attack/Protect จ่าย 1 Code/ใบ']]
+      .map(([k,t,d])=>`<button class="cph-card" type="button" data-pick="${k}"><span class="t">${t}</span><small>${d}</small></button>`).join('')}</div>`;
+  el.addEventListener('click',e=>{const b=e.target.closest('[data-pick]'); if(b){ if(window.sfx) sfx('click'); act('combat_act',{name:b.dataset.pick}); }});
+  document.body.appendChild(el);
+}
+function banner(){
+  const st=S.state; let el=$('#banner');
+  if(!st||st.winner==null){ if(el) el.remove(); return; }
+  if(el&&el.dataset.w===String(st.winner)) return;
+  el?.remove(); const W=S.players.find(p=>p.uid===st.winner)||{name:nameOf(st.winner)};
+  el=document.createElement('div'); el.className='win'; el.id='banner'; el.dataset.w=String(st.winner);
+  el.innerHTML=`<div class="win-in">${avatarBox(W,'win')}<div class="win-name">${esc(W.name)}</div><div class="win-text">WINNER</div>
+    <div class="row win-btns">${S.host===MYID?'<button class="btn pri" data-do="win_again" type="button">เล่นอีกครั้ง</button>':'<span class="mut">รอเจ้าของห้องกดเล่นอีกครั้ง</span>'}<a class="btn" href="/rooms">ออกจากห้อง</a></div></div>`;
+  document.body.appendChild(el); if(window.sfx) sfx('land');
+}
+/* ---------- หงายการ์ด Partners ทั้งสองฝ่าย ---------- */
+function checkReveal(r){
+  const k=r?`${r.id}-${r.ts}`:'';
+  if(!revealInit){revealSeen=k; revealInit=true; return;}
+  if(k&&k!==revealSeen){revealSeen=k; showReveal();} else if(!k) revealSeen=k;
+}
+function showReveal(){
+  $('#reveal')?.remove(); const {me,opp}=sides(), st=S.state; if(!me||!opp) return;
+  const grp=(P,side,lab)=>{const arr=(st.p[P.uid]&&st.p[P.uid].z.partners)||[], sl=SLEEVE[side];
+    return `<div class="rv-col"><div class="rv-cap">Partners Zone <small>(${lab})</small></div><div class="rv-cards">${arr.map((c,i)=>{const cd=c.cid&&S.cards[c.cid];
+      return `<div class="flipc" style="--d:${(0.5+i*.38).toFixed(2)}s"><div class="flin"><div class="fback ${sl?'img':''}" ${sl?`style="background-image:url('${esc(sl)}')"`:''}>${sl?'':'<i>DD</i>'}</div><div class="ffront">${cd?cardHTML(cd):''}</div></div></div>`;}).join('')}</div>
+      <div class="rv-name">${esc(P.name)}</div></div>`;};
+  const el=document.createElement('div'); el.id='reveal'; el.className='reveal';
+  el.innerHTML=`<div class="rv-row">${grp(me,'me','ของเรา')}<div class="rv-vs">VS</div>${grp(opp,'opp','ของอีกฝ่าย')}</div>`;
+  const close=()=>{el.classList.add('out'); setTimeout(()=>el.remove(),450);}; el.addEventListener('click',close);
+  document.body.appendChild(el); if(window.sfx) sfx('dice'); setTimeout(()=>{if(window.sfx) sfx('land');},900); setTimeout(close,5600);
 }
 /* ---------- Playmat ---------- */
 const matCss=key=>{const o=MATS.find(x=>x.key===key); return (!o||(!o.image&&!o.css))?'':(o.image?`url('${o.image}')`:o.css);};

@@ -16,6 +16,7 @@ class User(UserMixin, db.Model):
     role = db.Column(db.String(10), default='user')          # user | admin
     verified = db.Column(db.Boolean, default=False)
     banned = db.Column(db.Boolean, default=False)
+    sleeve = db.Column(db.Integer)                       # Sleeve ที่ผู้เล่นเลือกใช้กับทุกเด็ค (ถ้าเด็คไม่ได้ตั้งเอง)
     playmat = db.Column(db.String(40), default='')      # สกิน Playmat ที่เลือก: '' | 'b:<ชื่อ>' | 'u:<id>'
     google_id = db.Column(db.String(64), index=True)
     discord_id = db.Column(db.String(64), index=True)

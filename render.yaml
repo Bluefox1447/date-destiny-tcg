@@ -21,14 +21,10 @@ services:
           property: connectionString
       - key: UPLOADS_IN_DB            # เก็บรูปการ์ด/Sleeve ในฐานข้อมูล (Render ฟรีไม่มีดิสก์ถาวร)
         value: "1"
-      - key: SKIP_EMAIL_VERIFY        # สมัครแล้วใช้ได้ทันที ไม่ต้องตั้ง SMTP (ตั้งเป็น 0 ถ้ามี MAIL_* แล้ว)
-        value: "1"
       - key: DECK_SIZE
         value: "50"
       - key: MAX_COPIES
         value: "4"
-      # ถ้าจะส่งอีเมลยืนยันจริง: เพิ่ม MAIL_SERVER / MAIL_PORT / MAIL_USERNAME / MAIL_PASSWORD / MAIL_FROM
-      # ที่ Render > Environment แล้วตั้ง SKIP_EMAIL_VERIFY เป็น 0
 
 databases:
   - name: dds-db

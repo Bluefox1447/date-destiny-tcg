@@ -194,6 +194,29 @@ def save_upload(file, sub):
     return f'{UPLOAD_URL}/{sub}/{name}'
 
 
+USERNAME_RE = re.compile(r'^[A-Za-z0-9ก-๙_.\-]{3,24}$')
+
+
+def username_error(name, exclude_id=None):
+    """ตรวจชื่อผู้ใช้: 3–24 ตัว ใช้ ก-ฮ a-z 0-9 _ . - และห้ามซ้ำ (ไม่สนตัวพิมพ์ใหญ่เล็ก)"""
+    if not USERNAME_RE.match(name or ''):
+        return 'ชื่อผู้ใช้ต้องยาว 3–24 ตัวอักษร ใช้ได้เฉพาะ ก-ฮ, a-z, 0-9, _ . -'
+    q = User.query.filter(db.func.lower(User.username) == name.lower())
+    if exclude_id:
+        q = q.filter(User.id != exclude_id)
+    return 'ชื่อผู้ใช้นี้ถูกใช้แล้ว' if q.first() else None
+
+
+def uniq_username(base):
+    base = re.sub(r'[^A-Za-z0-9ก-๙_.\-]', '', base or '')[:20] or 'player'
+    base = base + '_' * max(0, 3 - len(base))
+    name, i = base, 1
+    while username_error(name):
+        i += 1
+        name = f'{base}{i}'
+    return name
+
+
 _hits = {}
 
 
@@ -307,39 +330,25 @@ def index():
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        email = request.form.get('email', '').strip().lower()
-        username = request.form.get('username', '').strip()
+        name = request.form.get('username', '').strip()
         pw = request.form.get('password', '')
+        pw2 = request.form.get('password2', pw)
         if rate_limited(f'reg:{request.remote_addr}', 10, 3600):
             flash('สมัครสมาชิกถี่เกินไป กรุณารอสักครู่', 'err')
-        elif not re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', email):
-            flash('รูปแบบอีเมลไม่ถูกต้อง', 'err')
-        elif not 2 <= len(username) <= 30:
-            flash('ชื่อผู้ใช้ต้องยาว 2–30 ตัวอักษร', 'err')
+        elif username_error(name):
+            flash(username_error(name), 'err')
         elif len(pw) < 8:
             flash('รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร', 'err')
-        else:
-            u = User.query.filter_by(email=email).first()
-            if u and u.verified:
-                flash('อีเมลนี้ถูกใช้สมัครแล้ว ลองเข้าสู่ระบบแทน', 'err')
-                return redirect(url_for('login'))
-            if not u:
-                u = User(email=email)
-                db.session.add(u)
-            u.username, u.password_hash = username, generate_password_hash(pw)
-            if email in ADMIN_EMAILS and os.getenv('SKIP_EMAIL_VERIFY') != '1':
-                u.role = 'admin'
-            if os.getenv('SKIP_EMAIL_VERIFY') == '1':      # ไม่ส่งรหัสทางอีเมล สมัครเสร็จใช้งานได้ทันที
-                u.verified, u.code = True, None
-                db.session.commit()
-                login_user(u, remember=True)
-                flash('สมัครสมาชิกสำเร็จ ยินดีต้อนรับ!', 'ok')
-                return redirect(pop_next())
-            ok = issue_code(u)
-            session['verify_email'] = email
-            flash('ส่งรหัสยืนยัน 6 หลักไปที่อีเมลแล้ว' if ok else
-                  'ส่งอีเมลไม่สำเร็จ ตรวจสอบการตั้งค่า MAIL_* แล้วกด "ส่งรหัสอีกครั้ง"', 'ok' if ok else 'err')
-            return redirect(url_for('verify'))
+        elif pw != pw2:
+            flash('รหัสผ่านสองช่องไม่ตรงกัน', 'err')
+        else:       # สมัครด้วยชื่อผู้ใช้อย่างเดียว ไม่เก็บอีเมล (ช่อง email เก็บค่าสุ่มภายในระบบ ไม่แสดงที่ใด)
+            u = User(username=name, email=f'{uuid.uuid4().hex}@user.local', verified=True,
+                     password_hash=generate_password_hash(pw))
+            db.session.add(u)
+            db.session.commit()
+            login_user(u, remember=True)
+            flash('สมัครสมาชิกสำเร็จ ยินดีต้อนรับ!', 'ok')
+            return redirect(pop_next())
     return render_template('register.html')
 
 
@@ -382,27 +391,19 @@ def login():
     if nx.startswith('/') and not nx.startswith('//'):
         session['next'] = nx
     if request.method == 'POST':
-        email = request.form.get('email', '').strip().lower()
-        u = User.query.filter_by(email=email).first()
+        ident = request.form.get('username', '').strip()
+        u = User.query.filter(db.func.lower(User.username) == ident.lower()).first()
+        if not u and '@' in ident:                       # บัญชีเก่าที่เคยสมัครด้วยอีเมลยังเข้าได้
+            u = User.query.filter_by(email=ident.lower()).first()
         if rate_limited(f'login:{request.remote_addr}', 15, 300):
             flash('พยายามเข้าสู่ระบบหลายครั้งเกินไป กรุณารอ 5 นาที', 'err')
         elif not u or not u.password_hash or not check_password_hash(u.password_hash, request.form.get('password', '')):
-            flash('อีเมลหรือรหัสผ่านไม่ถูกต้อง', 'err')
+            flash('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง', 'err')
         elif u.banned:
             flash('บัญชีนี้ถูกระงับ', 'err')
-        elif not u.verified and os.getenv('SKIP_EMAIL_VERIFY') == '1':
-            u.verified, u.code = True, None            # โหมดข้ามอีเมล: ยืนยันบัญชีที่สมัครค้างไว้ให้เลย
-            db.session.commit()
-            login_user(u, remember=True)
-            return redirect(pop_next())
-        elif not u.verified:
-            session['verify_email'] = email
-            issue_code(u)
-            flash('ยังไม่ได้ยืนยันอีเมล ส่งรหัสใหม่ให้แล้ว', 'err')
-            return redirect(url_for('verify'))
         else:
-            if email in ADMIN_EMAILS and not u.is_admin and os.getenv('SKIP_EMAIL_VERIFY') != '1':
-                u.role = 'admin'
+            if not u.verified:
+                u.verified = True
                 db.session.commit()
             login_user(u, remember=True)
             return redirect(pop_next())
@@ -451,7 +452,7 @@ def oauth_callback(provider):
     col = f'{provider}_id'
     u = User.query.filter(getattr(User, col) == pid).first() or User.query.filter_by(email=email.lower()).first()
     if not u:
-        u = User(email=email.lower(), username=(name or email.split('@')[0])[:30], avatar=avatar or '')
+        u = User(email=email.lower(), username=uniq_username(name or email.split('@')[0]), avatar=avatar or '')
         db.session.add(u)
     setattr(u, col, pid)
     u.verified = True
@@ -492,7 +493,11 @@ def profile():
     if request.method == 'POST':
         u = current_user
         name = request.form.get('username', '').strip()
-        if 2 <= len(name) <= 30:
+        if name and name != u.username:
+            err = username_error(name, exclude_id=u.id)
+            if err:
+                flash(err, 'err')
+                return redirect(url_for('profile'))
             u.username = name
         u.bio = request.form.get('bio', '')[:300]
         f = request.files.get('avatar')
@@ -633,20 +638,7 @@ def system_checks():
         add('bad', 'ADMIN_CLAIM_TOKEN', f'สั้นเกินไป ({len(raw)} ตัวอักษร) ระบบปิดหน้า /claim-admin ให้อัตโนมัติ ตั้งให้ยาวอย่างน้อย 16 ตัวอักษร')
     else:
         add('ok', 'ADMIN_CLAIM_TOKEN', 'ตั้งแล้ว ความยาวเพียงพอ')
-    skip = os.getenv('SKIP_EMAIL_VERIFY') == '1'
-    smtp = bool(os.getenv('MAIL_SERVER')) and not os.getenv('BREVO_API_KEY')
-    if skip:
-        add('ok', 'ยืนยันอีเมล', 'ข้ามการยืนยัน (สมัครแล้วใช้ได้เลย) · ADMIN_EMAILS จะไม่เลื่อนเป็น Admin อัตโนมัติในโหมดนี้')
-    elif os.getenv('BREVO_API_KEY'):
-        add('ok', 'ยืนยันอีเมล', 'ส่งรหัสผ่าน Brevo (HTTPS)')
-    elif smtp and ON_RENDER:
-        add('bad', 'ยืนยันอีเมล', 'ใช้ SMTP แต่ Render แผนฟรีบล็อกพอร์ต 25/465/587 อีเมลจะส่งไม่ออก ให้ตั้ง SKIP_EMAIL_VERIFY=1 หรือใช้ BREVO_API_KEY')
-    elif smtp:
-        add('ok', 'ยืนยันอีเมล', f"ส่งผ่าน SMTP {os.getenv('MAIL_SERVER')}")
-    else:
-        add('warn', 'ยืนยันอีเมล', 'ยังไม่ได้ตั้งค่าส่งอีเมล รหัสจะแสดงใน log ของเซิร์ฟเวอร์เท่านั้น')
-    if smtp and skip and ON_RENDER:
-        add('warn', 'MAIL_* ที่ไม่ได้ใช้', 'มีรหัสผ่านอีเมลเก็บไว้แต่ไม่ได้ใช้งาน (Render ฟรีบล็อก SMTP) แนะนำให้ลบ MAIL_* ออกจาก Environment')
+    add('ok', 'การสมัครสมาชิก', 'ใช้ชื่อผู้ใช้ + รหัสผ่าน ไม่เก็บ/ไม่แสดงอีเมลของผู้เล่น (บัญชี Google/Discord เก็บอีเมลไว้ภายในระบบเพื่อเชื่อมบัญชีเท่านั้น)')
     add('ok' if (not ON_RENDER or app.config['SESSION_COOKIE_SECURE']) else 'warn', 'HTTPS / คุกกี้', f"คุกกี้ Secure: {'เปิด' if app.config['SESSION_COOKIE_SECURE'] else 'ปิด'} · ลิงก์ห้อง: {PUBLIC_URL or '(ใช้โดเมนที่เปิดอยู่)'}")
     if os.getenv('SHOW_ERRORS') == '1':
         add('warn', 'SHOW_ERRORS', 'เปิดอยู่ ผู้เข้าเว็บทุกคนจะเห็นข้อความ error ใช้ชั่วคราวตอนไล่ปัญหา แล้วลบตัวแปรนี้ออก')
@@ -705,7 +697,7 @@ def admin_users():
     q = request.args.get('q', '').strip()
     qs = User.query
     if q:
-        qs = qs.filter(db.or_(User.email.contains(q), User.username.contains(q)))
+        qs = qs.filter(User.username.contains(q))
     return render_template('admin/users.html', users=qs.order_by(User.id.desc()).limit(200).all(), q=q)
 
 
@@ -938,6 +930,18 @@ def playmat_selected(user):
     return f'u:{d.id}' if d else 'b:classic'
 
 
+@app.route('/api/me/sleeve', methods=['GET', 'POST'])
+@login_required
+def api_my_sleeve():
+    if request.method == 'POST':
+        sid = to_int((request.get_json(silent=True) or {}).get('id'), 0, 0, 10**9)
+        if sid and not db.session.get(Sleeve, sid):
+            return jsonify(ok=False, error='ไม่พบ Sleeve นี้'), 400
+        current_user.sleeve = sid or None
+        db.session.commit()
+    return jsonify(items=[x.to_dict() for x in Sleeve.query.order_by(Sleeve.id)], selected=current_user.sleeve or 0)
+
+
 @app.get('/api/playmats')
 @login_required
 def api_playmats():
@@ -1103,9 +1107,9 @@ def room_deck(user, deck_id):
     main = {k: q for k, q in d.main.items() if int(k) in cards}
     if not set(d.partners) <= set(cards):
         return None, 'เด็คมีการ์ดที่ถูกลบออกจากระบบแล้ว กรุณาแก้ไขเด็ค'
-    sl = db.session.get(Sleeve, d.sleeve_id) if d.sleeve_id else None
+    sl = db.session.get(Sleeve, d.sleeve_id or getattr(user, 'sleeve', None) or 0)
     sl = sl or Sleeve.query.filter_by(is_default=True).first()
-    return dict(main=main, partners=d.partners, operator=None, name=d.name,
+    return dict(id=d.id, main=main, partners=d.partners, operator=None, name=d.name,
                 sleeve=(sl.image if sl else '')), cards
 
 
@@ -1214,7 +1218,14 @@ def on_act(d):
             actor = current_user.id
             if room.get('solo') and actor == room['host'] and d.get('as') == -actor:
                 actor = -actor                      # ห้องทดสอบ: เจ้าของห้องควบคุมฝั่งหุ่นได้
-            if d.get('type') == 'playmat':          # เปลี่ยน Playmat ระหว่างเกม: อีกฝ่ายเห็นทันที
+            if d.get('type') == 'deck':               # เปลี่ยนเด็คในหน้าเตรียมตัว
+                if actor < 0:
+                    err = 'ฝั่งทดสอบเปลี่ยนเด็คไม่ได้'
+                else:
+                    deck, cards = room_deck(current_user, d.get('deck_id'))
+                    err = cards if not deck else game.change_deck(room, actor, deck, cards)
+                extra = None
+            elif d.get('type') == 'playmat':          # เปลี่ยน Playmat ระหว่างเกม: อีกฝ่ายเห็นทันที
                 seat = game.seat(room, actor)
                 key = str(d.get('key', ''))
                 if not seat:
@@ -1255,8 +1266,8 @@ def on_disconnect():
 @app.cli.command('make-admin')
 def make_admin_cmd():
     """flask make-admin  (ถามอีเมลแล้วตั้งเป็น Admin)"""
-    email = input('อีเมลผู้ใช้: ').strip().lower()
-    u = User.query.filter_by(email=email).first()
+    name = input('ชื่อผู้ใช้: ').strip()
+    u = User.query.filter(db.func.lower(User.username) == name.lower()).first()
     if not u:
         print('ไม่พบผู้ใช้ ต้องสมัครสมาชิกก่อน')
         return
@@ -1289,6 +1300,18 @@ def migrate():
     ucols = {c['name'] for c in inspect(db.engine).get_columns('user')}
     if 'playmat' not in ucols:
         db.session.execute(text('ALTER TABLE "user" ADD COLUMN playmat VARCHAR(40)'))
+        db.session.commit()
+    if 'sleeve' not in ucols:
+        db.session.execute(text('ALTER TABLE "user" ADD COLUMN sleeve INTEGER'))
+        db.session.commit()
+    seen, changed = set(), False                      # ชื่อผู้ใช้ต้องไม่ซ้ำ: บัญชีเก่าที่ชื่อชนกันจะต่อท้ายเลข id
+    for u in User.query.order_by(User.id).all():
+        k = (u.username or '').lower()
+        if k in seen or not k:
+            u.username = f'{(u.username or "player")[:18]}_{u.id}'
+            changed = True
+        seen.add((u.username or '').lower())
+    if changed:
         db.session.commit()
 
 

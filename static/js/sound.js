@@ -43,6 +43,7 @@
     shuffle:()=>{for(let i=0;i<16;i++) tone(180+Math.random()*700,i*.032,.045,'triangle',.22);},
     draw:()=>{tone(1100,0,.12,'triangle',.24,320);tone(2400,0,.03,'square',.07);},
     discard:()=>{tone(260,0,.15,'sine',.42,80);tone(1400,0,.03,'square',.08);},
+    geass:()=>{tone(150,0,.55,'sawtooth',.28,900);tone(80,0,.65,'sine',.34,35);tone(1200,.3,.2,'triangle',.15,1800);},
     land:()=>{tone(392,0,.12,'triangle',.4);tone(587,.11,.28,'triangle',.4);}
   };
   window.sfx=name=>{ if(on&&FX[name]) try{FX[name]();}catch(e){} };

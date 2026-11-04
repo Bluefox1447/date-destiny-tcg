@@ -1,41 +1,90 @@
 {% extends 'base.html' %}{% block title %}เด็คของฉัน{% endblock %}
 {% block content %}
 <div class="wrap">
-  <div class="row"><h1 style="font-size:2rem">เด็คของฉัน</h1><a class="btn pri right" href="{{ url_for('deck_edit') }}">สร้างเด็คใหม่</a></div>
+  <div class="row"><h1 style="font-size:2rem;margin:0">เด็ค</h1><a class="btn pri right" href="{{ url_for('deck_edit') }}">สร้างเด็คใหม่</a></div>
+  <div class="tabbar" id="tabbar" role="tablist">
+    <button type="button" class="tab on" data-t="mine" role="tab">เด็คของฉัน <small>({{ mine|length }})</small></button>
+    <button type="button" class="tab" data-t="pub" role="tab">เด็คสาธารณะ <small>({{ pub|length }})</small></button>
+    <button type="button" class="tab" data-t="gear" role="tab">ใส่ Sleeve และ Playmat</button>
+  </div>
+
+  <section class="tabp" id="p-mine">
   <form method="post" action="{{ url_for('deck_import') }}" class="box row" style="margin:14px 0">
     <b>นำเข้าเด็ค</b><input name="code" placeholder="วางโค้ดเด็คที่เพื่อนแชร์ให้" class="grow" required><button class="btn">นำเข้า</button>
   </form>
   <div class="cols">
-    {% for d in mine %}
-    <div class="box">
-      <div class="row"><h3 style="margin:0" class="grow">{{ d.name }}</h3>{% if d.public %}<span class="pill ok">สาธารณะ</span>{% endif %}</div>
-      <p class="mut" style="margin:4px 0 8px">เด็คหลัก {{ d.size }}/{{ DECK_SIZE }} · Partners {{ d.partners|length }}/4</p>
-      {% for i in issues[d.id] %}<div class="pill warn" style="margin:0 4px 4px 0">{{ i }}</div>{% endfor %}
-      {% if not issues[d.id] %}<span class="pill ok">พร้อมเล่น</span>{% endif %}
-      <div class="row mt">
-        <a class="btn sm pri" href="{{ url_for('deck_view', did=d.id) }}">ดูเด็ค</a>
-        <button class="btn sm" onclick="copyCode({{ d.id }})">คัดลอกโค้ด</button>
-        <form method="post" action="{{ url_for('deck_public', did=d.id) }}"><button class="btn sm">{{ 'ซ่อน' if d.public else 'แชร์สาธารณะ' }}</button></form>
-        <form method="post" action="{{ url_for('deck_copy', did=d.id) }}"><button class="btn sm">ทำสำเนา</button></form>
-        <form method="post" action="{{ url_for('deck_delete', did=d.id) }}" onsubmit="return confirm('ลบเด็คนี้?')"><button class="btn sm dng">ลบ</button></form>
+      {% for d in mine %}
+      <div class="box">
+        <div class="row"><h3 style="margin:0" class="grow">{{ d.name }}</h3>{% if d.public %}<span class="pill ok">สาธารณะ</span>{% endif %}</div>
+        <p class="mut" style="margin:4px 0 8px">เด็คหลัก {{ d.size }}/{{ DECK_SIZE }} · Partners {{ d.partners|length }}/4</p>
+        {% for i in issues[d.id] %}<div class="pill warn" style="margin:0 4px 4px 0">{{ i }}</div>{% endfor %}
+        {% if not issues[d.id] %}<span class="pill ok">พร้อมเล่น</span>{% endif %}
+        <div class="row mt">
+          <a class="btn sm pri" href="{{ url_for('deck_view', did=d.id) }}">ดูเด็ค</a>
+          <button class="btn sm" onclick="copyCode({{ d.id }})">คัดลอกโค้ด</button>
+          <form method="post" action="{{ url_for('deck_public', did=d.id) }}"><button class="btn sm">{{ 'ซ่อน' if d.public else 'แชร์สาธารณะ' }}</button></form>
+          <form method="post" action="{{ url_for('deck_copy', did=d.id) }}"><button class="btn sm">ทำสำเนา</button></form>
+          <form method="post" action="{{ url_for('deck_delete', did=d.id) }}" onsubmit="return confirm('ลบเด็คนี้?')"><button class="btn sm dng">ลบ</button></form>
+        </div>
       </div>
+      {% else %}<p class="mut">ยังไม่มีเด็ค กด "สร้างเด็คใหม่" หรือนำเข้าโค้ดจากเพื่อน</p>{% endfor %}
     </div>
-    {% else %}<p class="mut">ยังไม่มีเด็ค กด "สร้างเด็คใหม่" หรือนำเข้าโค้ดจากเพื่อน</p>{% endfor %}
-  </div>
-  <h2 class="mt">เด็คที่ผู้เล่นอื่นแชร์</h2>
-  <div class="cols">
-    {% for d in pub %}
-    <div class="box"><h3 style="margin:0">{{ d.name }}</h3>
-      <p class="mut" style="margin:4px 0">โดย {{ d.owner.username }} · {{ d.size }} ใบ</p><p>{{ d.description }}</p>
-      <div class="row"><a class="btn sm pri" href="{{ url_for('deck_view', did=d.id) }}">ดูเด็ค</a>
-      <form method="post" action="{{ url_for('deck_copy', did=d.id) }}"><button class="btn sm pri">คัดลอกไปคลังของฉัน</button></form>
-      <button class="btn sm" onclick="copyCode({{ d.id }})">คัดลอกโค้ด</button></div></div>
-    {% else %}<p class="mut">ยังไม่มีใครแชร์เด็ค</p>{% endfor %}
-  </div>
+  </section>
+
+  <section class="tabp hide" id="p-pub">
+    <p class="mut" style="margin:0 0 12px">เด็คที่ผู้เล่นคนอื่นเปิดแชร์ไว้ ดูรายละเอียดหรือคัดลอกไปคลังของคุณได้</p>
+    <div class="cols">
+      {% for d in pub %}
+      <div class="box"><h3 style="margin:0">{{ d.name }}</h3>
+        <p class="mut" style="margin:4px 0">โดย {{ d.owner.username }} · {{ d.size }} ใบ</p><p>{{ d.description }}</p>
+        <div class="row"><a class="btn sm pri" href="{{ url_for('deck_view', did=d.id) }}">ดูเด็ค</a>
+        <form method="post" action="{{ url_for('deck_copy', did=d.id) }}"><button class="btn sm pri">คัดลอกไปคลังของฉัน</button></form>
+        <button class="btn sm" onclick="copyCode({{ d.id }})">คัดลอกโค้ด</button></div></div>
+      {% else %}<p class="mut">ยังไม่มีใครแชร์เด็ค</p>{% endfor %}
+    </div>
+  </section>
+
+  <section class="tabp hide" id="p-gear">
+    <div class="box">
+      <h2>Sleeve (หลังการ์ด)</h2>
+      <p class="mut" style="margin:0 0 8px">ใช้กับทุกเด็คของคุณ ยกเว้นเด็คที่ตั้ง Sleeve เองในหน้าจัดเด็ค</p>
+      <div class="pmgrid" id="slgrid"><span class="mut">กำลังโหลด…</span></div>
+    </div>
+    <div class="box" style="margin-top:16px">
+      <h2>Playmat (พื้นสนาม)</h2>
+      <p class="mut" style="margin:0 0 8px">ในห้องเล่น ครึ่งล่างเป็น Playmat ของคุณ ครึ่งบนเป็นของอีกฝ่าย</p>
+      <div class="pmgrid" id="pmgrid"><span class="mut">กำลังโหลด…</span></div>
+    </div>
+  </section>
 </div>
 {% endblock %}
 {% block scripts %}<script>
-if(location.search.includes('saved=1')){toast('บันทึกเด็คแล้ว','ok');history.replaceState(null,'','/decks');}
+if(location.search.includes('saved=1')){toast('บันทึกเด็คแล้ว','ok');history.replaceState(null,'','/decks'+location.hash);}
 async function copyCode(id){const r=await fetch('/api/decks/'+id+'/code');const j=await r.json();
   try{await navigator.clipboard.writeText(j.code);toast('คัดลอกโค้ดเด็คแล้ว ส่งให้เพื่อนได้เลย','ok')}catch(e){prompt('คัดลอกโค้ดนี้',j.code)}}
+/* แท็บ */
+const TABS=['mine','pub','gear'];
+function showTab(t){ if(!TABS.includes(t)) t='mine';
+  TABS.forEach(k=>document.getElementById('p-'+k).classList.toggle('hide',k!==t));
+  document.querySelectorAll('#tabbar .tab').forEach(b=>b.classList.toggle('on',b.dataset.t===t));
+  if(t==='gear') loadGear(); }
+document.getElementById('tabbar').addEventListener('click',e=>{const b=e.target.closest('.tab'); if(!b) return; location.hash=b.dataset.t; showTab(b.dataset.t);});
+window.addEventListener('hashchange',()=>showTab(location.hash.slice(1)));
+/* ใส่ Sleeve และ Playmat */
+let gearLoaded=false;
+async function loadGear(){
+  const [sl,pm]=await Promise.all([fetch('/api/me/sleeve').then(r=>r.json()),fetch('/api/playmats').then(r=>r.json())]);
+  document.getElementById('slgrid').innerHTML=[{id:0,name:'ตามเด็ค / ค่าเริ่มต้นระบบ',image:''}].concat(sl.items).map(o=>`<button type="button" class="pmopt ${o.id===sl.selected?'on':''}" data-id="${o.id}" title="${esc(o.name)}">
+    <span class="pmthumb sl" style="${o.image?`background-image:url('${esc(o.image)}')`:''}">${o.image?'':'DD'}</span><span>${esc(o.name)}</span></button>`).join('');
+  document.getElementById('pmgrid').innerHTML=pm.items.map(o=>`<button type="button" class="pmopt ${o.key===pm.selected?'on':''}" data-k="${o.key}" title="${esc(o.name)}">
+    <span class="pmthumb" style="${o.image?`background-image:url('${esc(o.image)}')`:o.css?`background:${o.css}`:''}"></span><span>${esc(o.name)}</span></button>`).join('');
+  gearLoaded=true;
+}
+document.getElementById('slgrid').addEventListener('click',async e=>{const b=e.target.closest('.pmopt'); if(!b) return;
+  const r=await fetch('/api/me/sleeve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:+b.dataset.id})});
+  if(r.ok){toast('เปลี่ยน Sleeve แล้ว','ok');loadGear();}});
+document.getElementById('pmgrid').addEventListener('click',async e=>{const b=e.target.closest('.pmopt'); if(!b) return;
+  const r=await fetch('/api/me/playmat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:b.dataset.k})});
+  if(r.ok){toast('เปลี่ยน Playmat แล้ว','ok');loadGear();}});
+showTab(location.hash.slice(1));
 </script>{% endblock %}

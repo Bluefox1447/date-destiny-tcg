@@ -5,13 +5,12 @@
   <form method="post" enctype="multipart/form-data" class="box">
     <div class="row" style="margin-bottom:14px">
       {% if current_user.avatar %}<img class="av" style="width:64px;height:64px" src="{{ current_user.avatar }}">{% else %}<span class="av" style="width:64px;height:64px;font-size:1.6rem">{{ current_user.username[:1]|upper }}</span>{% endif %}
-      <div><div class="mono">{{ current_user.email }}</div><span class="pill {{ 'warn' if current_user.is_admin else '' }}">{{ 'Admin' if current_user.is_admin else 'ผู้เล่น' }}</span></div>
+      <div><b>{{ current_user.username }}</b><br><span class="pill {{ 'warn' if current_user.is_admin else '' }}">{{ 'Admin' if current_user.is_admin else 'ผู้เล่น' }}</span></div>
     </div>
-    <label class="f"><span>ชื่อผู้ใช้</span><input name="username" value="{{ current_user.username }}" maxlength="30"></label>
+    <label class="f"><span>ชื่อผู้ใช้</span><input name="username" value="{{ current_user.username }}" minlength="3" maxlength="24"></label>
     <label class="f"><span>แนะนำตัว</span><textarea name="bio" rows="2" maxlength="300">{{ current_user.bio }}</textarea></label>
     <label class="f"><span>รูปโปรไฟล์</span><input type="file" name="avatar" accept="image/*"></label>
-    <h3>สกิน Playmat (พื้นสนาม)</h3>
-    <div class="pmgrid" id="pmgrid"><span class="mut">กำลังโหลด…</span></div>
+    <p class="mut" style="margin:0 0 14px">เลือก Sleeve และ Playmat ได้ที่หน้า <a href="{{ url_for('decks') }}#gear">เด็คของฉัน → ใส่ Sleeve และ Playmat</a></p>
     <h3>เปลี่ยนรหัสผ่าน</h3>
     {% if current_user.password_hash %}<label class="f"><span>รหัสผ่านเดิม</span><input type="password" name="old_password"></label>{% endif %}
     <label class="f"><span>รหัสผ่านใหม่</span><input type="password" name="new_password" minlength="8"></label>
@@ -19,14 +18,3 @@
   </form>
 </div>
 {% endblock %}
-{% block scripts %}<script>
-async function loadMats(){
-  const d=await (await fetch('/api/playmats')).json(), g=document.getElementById('pmgrid');
-  g.innerHTML=d.items.map(o=>`<button type="button" class="pmopt ${o.key===d.selected?'on':''}" data-k="${o.key}" title="${esc(o.name)}">
-    <span class="pmthumb" style="${o.image?`background-image:url('${esc(o.image)}')`:o.css?`background:${o.css}`:''}"></span><span>${esc(o.name)}</span></button>`).join('');
-}
-document.getElementById('pmgrid').addEventListener('click',async e=>{const b=e.target.closest('.pmopt'); if(!b) return;
-  const r=await fetch('/api/me/playmat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:b.dataset.k})});
-  if(r.ok){toast('เปลี่ยน Playmat แล้ว','ok');loadMats();}});
-loadMats();
-</script>{% endblock %}

@@ -36,6 +36,7 @@
   </div>
 </div>
 <script id="sleeves" type="application/json">{{ sleeves|tojson }}</script>
+<div class="modal hide" id="zoomb"><div class="zbox"><button class="btn sm zclose" id="zbx" type="button">ปิด ✕</button><div id="zvc"></div><div id="zvt" class="itext"></div></div></div>
 <script id="deckdata" type="application/json">{{ deck|tojson }}</script>
 {% endblock %}
 {% block scripts %}<script>window.DECK_SIZE={{ DECK_SIZE }};window.MAX_COPIES={{ MAX_COPIES }};

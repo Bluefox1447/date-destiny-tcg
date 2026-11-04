@@ -4,13 +4,13 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{% block title %}Date Destiny TCG{% endblock %}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Kanit:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Kanit:wght@400;500;600&family=JetBrains+Mono:wght@500;700&family=Russo+One&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body {% block bodyattr %}{% endblock %}>
 <nav class="nav"><div class="in">
   <a class="logo" href="{{ url_for('index') }}"><i>DD</i>Date Destiny TCG</a>
-  <a class="l {{ 'on' if request.endpoint=='cards' }}" href="{{ url_for('cards') }}">คลังการ์ด</a>
+  <a class="l {{ 'on' if request.endpoint=='cards' }}" href="{{ url_for('cards') }}">วิกิการ์ด</a>
   {% if current_user.is_authenticated %}
   <a class="l {{ 'on' if request.endpoint in ('decks','deck_edit') }}" href="{{ url_for('decks') }}">เด็คของฉัน</a>
   <a class="l {{ 'on' if request.endpoint in ('rooms','room_play') }}" href="{{ url_for('rooms') }}">ห้องเล่น</a>

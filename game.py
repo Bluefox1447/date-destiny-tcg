@@ -16,6 +16,7 @@ LINK_MAX = 3              # Ship ที่ Link เข้ากับ Neurous �
 DICE_TURNS = (3, 5, 7, 9) # เทิร์นที่ n ของผู้เล่นแต่ละคน ที่ได้ทอยลูกเต๋า D4 เป็นโค้ดโบนัส
 DICE_SIDES = 4
 DICE_FREE = (4, 6, 8, 12, 20)        # ลูกเต๋าทอยเล่น
+GEASS = {'blue': 'ฟ้า', 'red': 'แดง', 'yellow': 'เหลือง', 'green': 'เขียว', 'purple': 'ม่วง', 'black': 'ดำ'}
 STATUSES = {'blocker': 'บล็อคเกอร์'}   # สถานะที่ลากวางบนการ์ดได้
 FIELD_ZONES = ('attack', 'protect', 'partners', 'server', 'aura')
 HP_START = 8
@@ -53,7 +54,7 @@ def _inst(room, cid):
 
 def _new_state():
     return {'first': None, 'turn': None, 'phase': 'setup', 'turn_no': 0, 'combat_no': 1,
-            'acts': [], 'attacked': [], 'roll': None, 'rolls': {}, 'roll_seq': 0, 'winner': None, 'p': {}}
+            'acts': [], 'attacked': [], 'roll': None, 'rolls': {}, 'roll_seq': 0, 'reveal': None, 'winner': None, 'p': {}}
 
 
 def _build(room, p):
@@ -74,7 +75,7 @@ def _build(room, p):
 
 def add_player(room, uid, name, avatar, deck, cards):
     room['cards'].update({str(k): v for k, v in cards.items()})
-    p = dict(uid=uid, name=name, avatar=avatar, sid=None, online=True, deck=deck, sleeve=deck.get('sleeve', ''), playmat='')
+    p = dict(uid=uid, name=name, avatar=avatar, sid=None, online=True, deck=deck, sleeve=deck.get('sleeve', ''), playmat='', ready=False)
     room['players'].append(p)
     if room['state'] is None:
         room['state'] = _new_state()
@@ -89,6 +90,21 @@ def reset(room):
     for p in room['players']:
         _build(room, p)
     _log(room, 'ระบบ', 'รีเซ็ตเกมใหม่ เริ่ม Setup อีกครั้ง')
+
+
+def change_deck(room, uid, deck, cards):
+    """เปลี่ยนเด็คในหน้าเตรียมตัว (ก่อนเริ่ม Setup เท่านั้น) คืนข้อความ error หรือ None"""
+    p, s = seat(room, uid), room['state']
+    if not p or not s or s['phase'] != 'setup':
+        return 'เปลี่ยนเด็คได้เฉพาะก่อนเริ่มเกม'
+    su = s['p'][uid]['setup']
+    if su['placed'] or su['drew'] or su['hp'] or su['ready']:
+        return 'เริ่ม Setup แล้ว เปลี่ยนเด็คไม่ได้'
+    room['cards'].update({str(k): v for k, v in cards.items()})
+    p['deck'], p['sleeve'] = deck, deck.get('sleeve', '')
+    _build(room, p)
+    _log(room, p['name'], f"เลือกเด็ค {deck.get('name', '')}")
+    return None
 
 
 def list_rooms():
@@ -114,34 +130,38 @@ def view(room, viewer):
     s = room['state']
     reveal = bool(room.get('solo')) and viewer == room['host']      # ห้องทดสอบ: เจ้าของห้องเห็นทุกฝั่ง
     out = dict(code=room['code'], name=room['name'], host=room['host'], solo=bool(room.get('solo')), rules={'counter': COUNTER_DAMAGE}, cards=room['cards'],
-               players=[dict({k: p[k] for k in ('uid', 'name', 'avatar', 'online', 'sleeve')}, playmat=p.get('playmat', '')) for p in room['players']],
+               players=[dict({k: p[k] for k in ('uid', 'name', 'avatar', 'online', 'sleeve')}, playmat=p.get('playmat', ''), ready=p.get('ready', False),
+                             deck_id=(p.get('deck') or {}).get('id'), deck_name=(p.get('deck') or {}).get('name', '')) for p in room['players']],
                log=room['log'][-80:], spectators=len(room['spectators']), state=None)
     if s:
-        st = {k: s[k] for k in ('first', 'turn', 'phase', 'turn_no', 'combat_no', 'acts', 'attacked', 'roll', 'rolls', 'winner')}
+        st = {k: s[k] for k in ('first', 'turn', 'phase', 'turn_no', 'combat_no', 'acts', 'attacked', 'roll', 'rolls', 'reveal', 'winner')}
         st['p'] = {}
         for uid, p in s['p'].items():
             owner = uid == viewer or reveal
-            zs = {zn: ([_vis(c, zn, owner) for c in lst] if zn != 'deck' else len(lst))
+            spec = viewer is None                      # ผู้ชม (คนที่เข้าห้องแต่ไม่ได้เล่น) เห็นการ์ดบนมือของทั้งสองฝ่าย
+            zs = {zn: ([_vis(c, zn, owner or (spec and zn == 'hand')) for c in lst] if zn != 'deck' else len(lst))
                   for zn, lst in p['z'].items()}
-            st['p'][uid] = {'z': zs, 'code': p['code'], 'turns': p['turns'], 'protect_atk': p['protect_atk'], 'setup': p['setup']}
+            st['p'][uid] = {'z': zs, 'code': p['code'], 'turns': p['turns'], 'protect_atk': p['protect_atk'],
+                            'geass': p.get('geass'), 'setup': p['setup']}
         out['state'] = st
     return out
 
 
 def _hit(room, victim_uid, n, by_uid):
-    """ลด HP ของ victim ลง n ใบ (การ์ด HP ขึ้นมือเจ้าของ) ถ้า HP หมดแล้วยังโดนอีก = by_uid ชนะ"""
+    """ลด HP ของ victim ลง n ใบ (การ์ด HP ขึ้นมือเจ้าของ) เมื่อ Firewall Zone เหลือ 0 → by_uid ชนะทันที"""
     s = room['state']
     z = s['p'][victim_uid]['z']
     for _ in range(n):
-        if z['hp']:
-            c = z['hp'].pop(0)
-            c['up'], c['tap'] = False, False
-            z['hand'].append(c)
-        else:
-            s['winner'] = by_uid
-            _log(room, 'ระบบ', f"{seat(room, victim_uid)['name']} ไม่มี HP เหลือ → {seat(room, by_uid)['name']} ชนะ!")
-            return
-    _log(room, 'ระบบ', f"HP ของ {seat(room, victim_uid)['name']} เหลือ {len(z['hp'])} (การ์ด HP ขึ้นมือ)")
+        if not z['hp']:
+            break
+        c = z['hp'].pop(0)
+        c['up'], c['tap'] = False, False
+        z['hand'].append(c)
+    vn = seat(room, victim_uid)['name']
+    _log(room, 'ระบบ', f"HP ของ {vn} เหลือ {len(z['hp'])} (การ์ด HP ขึ้นมือ)")
+    if not z['hp'] and by_uid is not None:
+        s['winner'] = by_uid
+        _log(room, 'ระบบ', f"Firewall Zone ของ {vn} เหลือ 0 → {seat(room, by_uid)['name']} ชนะ!")
 
 
 def _eff(room, c):
@@ -232,6 +252,9 @@ def act(room, uid, d):
         for p in room['players']:
             act(room, p['uid'], {'type': 'ready'})
         return None, None
+    if t == 'lobby_ready':       # หน้าเตรียมตัว: กด NEXT = พร้อมเล่น (ป้ายชื่อเปลี่ยนจากแดงเป็นเขียว)
+        pl['ready'] = bool(d.get('on', True))
+        return None, None
     if s['winner'] is not None:
         return 'เกมจบแล้ว (เจ้าของห้องกดรีเซ็ตเพื่อเล่นใหม่)', None
 
@@ -251,11 +274,11 @@ def act(room, uid, d):
             return 'วางไปแล้ว', None
         z['partners'] = me['pre_partners']
         for c in z['partners']:
-            c['up'] = True
+            c['up'] = False                  # วางคว่ำหน้า (จะหงายพร้อมกันตอนเริ่มเกม)
         me['pre_partners'] = []
         random.shuffle(z['deck'])
         su['placed'] = True
-        L('วาง Partners 4 ใบลง Partners Zone และสับเด็คแล้ว')
+        L('วาง Partners 4 ใบลง Partners Zone แบบคว่ำหน้า และสับเด็คแล้ว')
         return None, None
     if t == 'setup_draw':
         if not su['placed'] or su['drew']:
@@ -264,16 +287,29 @@ def act(room, uid, d):
         su['drew'] = True
         L(f'จั่วการ์ด {HAND_START} ใบขึ้นมือ')
         return None, None
-    if t == 'mulligan':
+    if t == 'mulligan':          # เปลี่ยนการ์ดบนมือ: เลือกเฉพาะใบที่ต้องการ (iids) ถ้าไม่ส่งมาคือเปลี่ยนทั้งมือ
         if not su['drew'] or su['mull'] or su['hp']:
             return 'เปลี่ยนมือได้ 1 ครั้ง และต้องทำก่อนวาง HP', None
-        n = len(z['hand'])
-        z['deck'] += z['hand']
-        z['hand'] = []
-        random.shuffle(z['deck'])
-        _draw_n(me, n)
+        ids = d.get('iids')
+        if ids is None:
+            chosen = list(z['hand'])
+        else:
+            try:
+                want = {int(x) for x in ids}
+            except (TypeError, ValueError):
+                return 'ข้อมูลไม่ถูกต้อง', None
+            chosen = [c for c in z['hand'] if c['iid'] in want]
         su['mull'] = True
-        L(f'เปลี่ยนการ์ดบนมือ ({n} ใบ)')
+        if not chosen:
+            L('ไม่เปลี่ยนการ์ดบนมือ')
+            return None, None
+        for c in chosen:
+            z['hand'].remove(c)
+            c['up'] = False
+            z['deck'].append(c)
+        random.shuffle(z['deck'])
+        _draw_n(me, len(chosen))
+        L(f'เปลี่ยนการ์ดบนมือ ({len(chosen)} ใบ)')
         return None, None
     if t == 'setup_hp':
         if not su['drew'] or su['hp']:
@@ -296,7 +332,12 @@ def act(room, uid, d):
         if opp and s['p'][opp['uid']]['setup']['ready']:
             s['phase'], s['turn'], s['turn_no'] = 'generate', s['first'], 1
             s['p'][s['first']]['turns'] = 1
-            _log(room, 'ระบบ', f"เริ่มเกม! เทิร์นของ {seat(room, s['first'])['name']}")
+            for q in s['p'].values():                       # หงายการ์ด Partners ทั้งสองฝ่ายพร้อมกัน
+                for c in q['z']['partners']:
+                    c['up'] = True
+            s['roll_seq'] += 1
+            s['reveal'] = {'id': s['roll_seq'], 'ts': int(time.time() * 1000)}
+            _log(room, 'ระบบ', f"เริ่มเกม! หงายการ์ด Partners ทั้งสองฝ่าย · เทิร์นของ {seat(room, s['first'])['name']}")
         return None, None
 
     # ----- ลำดับเทิร์น -----
@@ -455,16 +496,20 @@ def act(room, uid, d):
         return None, None
     if t == 'hp_hit':
         n = max(1, min(10, int(d.get('n', 1))))
-        for _ in range(n):
-            if z['hp']:
-                c = z['hp'].pop(0)
-                c['up'], c['tap'] = False, False
-                z['hand'].append(c)
-            else:
-                s['winner'] = opp['uid'] if opp else None
-                _log(room, 'ระบบ', f'{name} ไม่มี HP เหลือ → {opp["name"] if opp else "-"} ชนะ!')
-                return None, None
-        L(f'HP ลดลง {n} การ์ด HP ขึ้นมือ (เหลือ {len(z["hp"])})')
+        _hit(room, uid, n, opp['uid'] if opp else None)
+        return None, None
+    if t == 'geass':             # กีอัส: ผู้เล่นทั้งสองฝ่ายกดได้ทุกเมื่อ เลือกสี ฟ้า/แดง/เหลือง/เขียว/ม่วง/ดำ (กดสีเดิมซ้ำ = ปิด)
+        col = d.get('color')
+        if col not in GEASS:
+            return 'สีกีอัสไม่ถูกต้อง', None
+        cur = me.get('geass')
+        if cur and cur['color'] == col:
+            me['geass'] = None
+            L('ปิดกีอัส')
+        else:
+            s['roll_seq'] += 1
+            me['geass'] = {'color': col, 'id': s['roll_seq'], 'ts': int(time.time() * 1000)}
+            L(f'ใช้กีอัสสี{GEASS[col]}')
         return None, None
     if t == 'roll':              # ทอยลูกเต๋าเล่น ๆ D4/D6/D8/D12/D20 (ทั้งสองฝั่งเห็นผล)
         try:
