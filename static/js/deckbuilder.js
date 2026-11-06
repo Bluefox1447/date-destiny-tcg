@@ -4,7 +4,7 @@ const D=JSON.parse($('#deckdata').textContent), SL=JSON.parse($('#sleeves').text
 const NEU=['entity','partners'];
 let ALL=[], BY={}, hist=[], redoS=[], sortMode='cost', dirty=false;
 const SORTS={cost:'ค่าคอส',color:'สี',type:'ประเภท',name:'ชื่อ'};
-const deck={id:D.id,name:D.name,desc:D.desc||'',main:{...D.main},partners:[...D.partners],sleeve:D.sleeve||'',public:!!D.public};
+const deck={id:D.id,name:D.name,desc:D.desc||'',main:{...D.main},partners:[...D.partners],sleeve:D.sleeve||'',cover:D.cover||null,public:!!D.public};
 $('#dname').value=deck.name; $('#ddesc').value=deck.desc; $('#dpub').checked=deck.public;
 
 /* ---------- ประวัติ Undo/Redo ---------- */
@@ -23,7 +23,14 @@ const CMP={cost:(a,b)=>a.cost-b.cost||a.name.localeCompare(b.name),
 
 /* ---------- วาดรายการเด็ค ---------- */
 function dc(c,sec,i){return `<div class="dc" data-id="${c.id}" data-sec="${sec}" data-i="${i??''}" title="คลิกเพื่อเอาออก 1 ใบ">${cardHTML(c,{mini:true})}</div>`;}
+function renderCover(){
+  const c=deck.cover&&BY[deck.cover], el=$('#cvprev'); if(!el) return;
+  el.innerHTML=c?cardHTML(c):'<span class="mut" style="font-size:.8rem">ยังไม่ได้เลือก</span>';
+  $('#cvclear').style.display=c?'':'none';
+}
+function setCover(id){deck.cover=id||null; dirty=true; renderCover(); toast(id?'ตั้งเป็นการ์ดหน้าเด็คแล้ว (อย่าลืมกดบันทึก)':'ล้างการ์ดหน้าเด็คแล้ว','ok');}
 function render(){
+  renderCover();
   const copies=[]; Object.entries(deck.main).forEach(([id,q])=>{const c=BY[id]; if(c) for(let k=0;k<q;k++) copies.push(c);});
   copies.sort(CMP[sortMode]);
   $('#lm').innerHTML=copies.map(c=>dc(c,'main')).join('');
@@ -96,6 +103,7 @@ function sleeveUI(){
 }
 $('#dsleeve').addEventListener('change',e=>{deck.sleeve=e.target.value; sleeveUI();});
 $('#undo').onclick=undo; $('#redo').onclick=redo;
+$('#cvclear').onclick=()=>setCover(null);
 $('#clear').onclick=()=>{ if(!confirm('ล้างการ์ดทั้งหมดในเด็คนี้?')) return; push(); deck.main={}; deck.partners=[]; render(); };
 $('#sort').onclick=()=>{const k=Object.keys(SORTS); sortMode=k[(k.indexOf(sortMode)+1)%k.length]; $('#sort').textContent='เรียง: '+SORTS[sortMode]; render();};
 document.addEventListener('keydown',e=>{ if(e.target.matches&&e.target.matches('input,textarea,select')) return;
@@ -103,7 +111,7 @@ document.addEventListener('keydown',e=>{ if(e.target.matches&&e.target.matches('
 ['q','ft','fc','fo'].forEach(i=>$('#'+i).addEventListener('input',pool));
 async function save(){
   deck.name=$('#dname').value.trim()||'เด็คใหม่'; deck.desc=$('#ddesc').value; deck.public=$('#dpub').checked;
-  const r=await fetch('/api/decks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:deck.id,name:deck.name,desc:deck.desc,public:deck.public,main:deck.main,partners:deck.partners,sleeve:deck.sleeve})});
+  const r=await fetch('/api/decks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:deck.id,name:deck.name,desc:deck.desc,public:deck.public,main:deck.main,partners:deck.partners,sleeve:deck.sleeve,cover:deck.cover})});
   if(!r.ok){toast('บันทึกไม่สำเร็จ','err');return null}
   const j=await r.json(); deck.id=j.id; history.replaceState(null,'','/decks/'+j.id+'/edit'); toast('บันทึกเด็คแล้ว','ok'); dirty=false; return j;
 }
@@ -127,9 +135,11 @@ $('#zbx').onclick=closeZoomB; $('#zoomb').addEventListener('click',e=>{if(e.targ
 let cmenu=null; const closeMenu=()=>{if(cmenu){cmenu.remove();cmenu=null;}};
 document.addEventListener('contextmenu',e=>{
   const t=e.target.closest('.pc,.dc'); closeMenu(); if(!t||!BY[t.dataset.id]) return; e.preventDefault();
-  cmenu=document.createElement('div'); cmenu.className='ctx'; cmenu.innerHTML='<button type="button">🔍 ขยายการ์ด</button>';
+  cmenu=document.createElement('div'); cmenu.className='ctx'; cmenu.innerHTML='<button type="button" data-c="zoom">🔍 ขยายการ์ด</button><button type="button" data-c="cover">🖼 ตั้งเป็นการ์ดหน้าเด็ค</button>';
   cmenu.style.left=Math.min(e.clientX,innerWidth-210)+'px'; cmenu.style.top=Math.min(e.clientY,innerHeight-70)+'px';
-  cmenu.firstChild.onclick=()=>{closeMenu(); openZoom(+t.dataset.id);}; document.body.appendChild(cmenu);
+  cmenu.querySelector('[data-c="zoom"]').onclick=()=>{closeMenu(); openZoom(+t.dataset.id);};
+  cmenu.querySelector('[data-c="cover"]').onclick=()=>{closeMenu(); setCover(+t.dataset.id);};
+  document.body.appendChild(cmenu);
 });
 document.addEventListener('click',e=>{ if(cmenu&&!e.target.closest('.ctx')) closeMenu(); },true);
 document.addEventListener('keydown',e=>{ if(e.key==='Escape'){closeMenu();closeZoomB();} });

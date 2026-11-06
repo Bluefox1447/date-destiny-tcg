@@ -112,6 +112,7 @@ class Deck(db.Model):
     partners_json = db.Column(db.Text, default='[]')      # [card_id x4]  (Neurous / Entity)
     operator_id = db.Column(db.Integer)                   # Server card วางบน Server Zone
     sleeve_id = db.Column(db.Integer)                     # สลีฟ (หลังการ์ด) ที่เลือกใช้
+    cover_id = db.Column(db.Integer)                      # การ์ดหน้าเด็ค (เลือกการ์ดใบไหนก็ได้ในวิกิการ์ด)
     public = db.Column(db.Boolean, default=False)
     created = db.Column(db.DateTime, default=datetime.utcnow)
     updated = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -131,7 +132,7 @@ class Deck(db.Model):
 
     def to_dict(self):
         return dict(id=self.id, name=self.name, desc=self.description, main=self.main,
-                    partners=self.partners, operator=self.operator_id, sleeve=self.sleeve_id, public=self.public,
+                    partners=self.partners, operator=self.operator_id, sleeve=self.sleeve_id, cover=self.cover_id, public=self.public,
                     owner=self.owner.username if self.owner else '', size=self.size)
 
 

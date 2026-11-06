@@ -586,25 +586,26 @@ body.fs.drawer-open .drawertab{left:360px}
 .pmthumb.sl{display:grid;place-items:center;aspect-ratio:5/7;font:700 1.2rem var(--mono);color:var(--sig)}
 
 /* ================= หน้าเตรียมตัว / เปลี่ยนมือ / หงาย Partners / Combat Phase / Winner / กีอัส ================= */
-.pennant{background:#fff center/cover no-repeat;clip-path:polygon(0 0,100% 0,100% 84%,50% 100%,0 84%);display:grid;place-items:center;color:#2a2a2a;font-family:var(--font)}
+.pennant{position:relative;background:#fff;clip-path:polygon(0 0,100% 0,100% 84%,50% 100%,0 84%);display:grid;place-items:center;color:#2a2a2a;font-family:var(--font)}
+.pennant .pimg{position:absolute;inset:6px 6px 18% 6px;background-position:center;background-repeat:no-repeat;background-size:contain}
 .pennant span{font:700 clamp(3rem,7vw,6rem) var(--font)}
-.pennant.big{width:min(300px,22vw);aspect-ratio:364/548}.pennant.wait{opacity:.5}
-.lobby{position:fixed;inset:0;z-index:97;background:#767676;display:grid;grid-template-columns:minmax(0,1fr) minmax(170px,.7fr) minmax(0,1fr);grid-template-rows:auto 1fr auto;gap:2vh 3vw;padding:6vh 8vw 4vh;overflow:auto;
+.pennant.big{height:clamp(150px,38vh,520px);width:auto;aspect-ratio:364/548}.pennant.wait{opacity:.5}
+.lobby{position:fixed;inset:0;z-index:97;background:#767676;display:grid;grid-template-columns:minmax(0,1fr) minmax(170px,.7fr) minmax(0,1fr);grid-template-rows:auto minmax(0,1fr) auto auto;gap:1.6vh 3vw;padding:3vh 8vw 2.5vh;overflow:auto;
   background-image:linear-gradient(135deg,transparent 49.7%,rgba(15,208,255,.22) 50%,transparent 50.3%),linear-gradient(45deg,transparent 49.7%,rgba(15,208,255,.18) 50%,transparent 50.3%);background-size:46vh 46vh}
 .lb-title{grid-column:1/4;justify-self:center;align-self:start}
 .lb-title span{display:block;background:#10c1e0;color:#fff;font-size:clamp(1.6rem,3.2vw,2.6rem);padding:8px 90px;border:3px solid #2f6df0;clip-path:polygon(7% 0,93% 0,100% 50%,93% 100%,7% 100%,0 50%);text-shadow:0 0 14px rgba(255,255,255,.7)}
 .lb-col{display:grid;justify-items:center;align-content:start;gap:14px;min-width:0}.lb-col.l{grid-column:1;grid-row:2}.lb-col.r{grid-column:3;grid-row:2}
-.lb-name{width:min(360px,90%);height:72px;display:grid;place-items:center;clip-path:polygon(7% 0,93% 0,100% 50%,93% 100%,7% 100%,0 50%);font-size:clamp(1.3rem,2.4vw,2.1rem);color:#fff;text-shadow:0 0 12px rgba(255,255,255,.55);transition:background .25s}
+.lb-name{width:min(360px,90%);height:clamp(52px,8vh,72px);display:grid;place-items:center;clip-path:polygon(7% 0,93% 0,100% 50%,93% 100%,7% 100%,0 50%);font-size:clamp(1.3rem,2.4vw,2.1rem);color:#fff;text-shadow:0 0 12px rgba(255,255,255,.55);transition:background .25s}
 .lb-name span{max-width:84%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lb-name.ok{background:#00b85c}.lb-name.no{background:#c4001a}
 .lb-vs{grid-column:2;grid-row:2;align-self:center;justify-self:center;font:italic 400 clamp(4rem,11vw,9rem) 'Russo One',var(--font);color:#fff;text-shadow:0 0 28px rgba(255,255,255,.6),0 6px 0 rgba(0,0,0,.25);line-height:1}
-.lb-deck select{min-width:min(420px,86vw);background:#2563eb;border:0;border-radius:18px;color:#fff;font:500 1.25rem var(--font);padding:16px 22px;cursor:pointer}
-.lb-next{grid-column:2;grid-row:3;justify-self:center;width:190px;height:170px;border:0;cursor:pointer;background:#0fd0ff;clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%);transition:transform .15s,filter .15s}
+.lb-deck select{min-width:min(420px,86vw);background:#2563eb;border:0;border-radius:18px;color:#fff;font:500 1.15rem var(--font);padding:clamp(10px,1.6vh,16px) 22px;cursor:pointer}
+.lb-next{grid-column:2;grid-row:3;justify-self:center;width:min(190px,24vh);height:min(170px,21.5vh);border:0;cursor:pointer;background:#0fd0ff;clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%);transition:transform .15s,filter .15s}
 .lb-next span{font:italic 400 2.6rem 'Russo One',var(--font);color:#fff;text-shadow:0 0 16px rgba(255,255,255,.85)}
 .lb-next:hover{transform:scale(1.07);filter:brightness(1.12)}.lb-next:focus-visible{outline:4px solid #fff}
 .lb-state{font-size:1.2rem;color:#ffd2d2}.lb-state.ok{color:#c9ffe2}
 .lb-hint{grid-column:1/4;text-align:center;color:#eaf6ff;font-size:.95rem;align-self:end}
-@media(max-width:760px){.lobby{grid-template-columns:1fr 1fr;padding:6vh 5vw}.lb-vs{grid-column:1/3;grid-row:3;font-size:4rem}.lb-next{grid-column:1/3;grid-row:4}.lb-col.r{grid-column:2}.pennant.big{width:34vw}}
+@media(max-width:760px){.lobby{grid-template-columns:1fr 1fr;padding:4vh 5vw}.lb-vs{grid-column:1/3;grid-row:3;font-size:4rem}.lb-next{grid-column:1/3;grid-row:4}.lb-col.r{grid-column:2}.pennant.big{height:auto;width:34vw}}
 /* เปลี่ยนการ์ดบนมือ */
 .mull{position:fixed;inset:0;z-index:97;background:rgba(36,36,36,.93);display:grid;place-items:center;padding:12px}
 .mull-box{--W:min(960px,92vw,calc((100vh - 230px)*1.38 + 170px));width:var(--W);background:#555;border:3px solid #5be3e9;padding:18px 84px 16px;position:relative;
@@ -646,11 +647,11 @@ body.fs.drawer-open .drawertab{left:360px}
 @media(max-width:760px){.cph-cards{grid-template-columns:1fr}}
 /* Winner */
 .win{position:fixed;inset:0;z-index:98;background:#555;display:grid;place-items:center;animation:cfin .3s}
-.win-in{display:grid;justify-items:center;gap:1.4vh;padding:2vh 4vw}
-.pennant.win{width:min(360px,56vw,38vh);aspect-ratio:466/600}
-.win-name{font-size:clamp(1.6rem,3vw,2.6rem);font-weight:600}
-.win-text{font:italic 400 clamp(3.4rem,11vw,9rem) 'Russo One',var(--font);color:#fff;line-height:1;text-shadow:0 0 34px rgba(255,255,255,.65)}
-.win-btns{justify-content:center;margin-top:10px}
+.win-in{display:grid;justify-items:center;align-content:center;gap:1.2vh;padding:2vh 4vw;max-height:100vh}
+.pennant.win{height:min(50vh,540px);width:auto;aspect-ratio:466/600}
+.win-name{font-size:clamp(1.5rem,2.6vw,2.4rem);font-weight:600;margin-top:2.2vh}
+.win-text{font:italic 400 clamp(3rem,9vw,7.5rem) 'Russo One',var(--font);color:#fff;line-height:1;text-shadow:0 0 34px rgba(255,255,255,.65)}
+.win-btns{justify-content:center;margin-top:2vh}
 /* กีอัส */
 .gchip{display:inline-flex;align-items:center;gap:6px;border:2px solid #fff;border-radius:999px;padding:0 10px 0 6px;font-size:.78rem;background:rgba(0,0,0,.35);margin-left:4px}
 .gchip:before{content:'';width:13px;height:13px;border-radius:50%;background:var(--gc);box-shadow:0 0 9px var(--gc),0 0 0 2px #fff}
@@ -666,3 +667,21 @@ body.fs.drawer-open .drawertab{left:360px}
 @keyframes gxin{from{opacity:0;transform:scale(.7)}}
 
 #zoomb .card{--cw:min(360px,40vw,52vh)}#zoomb .card.t-server{--cw:min(280px,32vw,40vh)}
+
+/* การ์ดหน้าเด็ค */
+.dtile{display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:0}
+.dtile.hascover{column-gap:14px}
+.dtile>*{grid-column:2}
+.dtile>.dcover{grid-column:1;grid-row:1/span 12;align-self:start}
+.dcover:empty{display:none}
+.dtile .dcover .card{--cw:88px}.dtile .dcover .card.t-server{--cw:64px}
+#vcover .card{--cw:104px}#vcover .card.t-server{--cw:78px}
+.coverbox{margin-bottom:12px;border:2px solid var(--line);border-radius:14px;padding:10px;background:rgba(0,0,0,.14)}
+.cvprev{min-width:62px;display:grid;place-items:center}.cvprev .card{--cw:62px}
+/* Combat Phase: ปุ่มดูการ์ดบนมือ */
+.cph-sub{display:flex;gap:12px;align-items:center;justify-content:center;flex-wrap:wrap}
+.cph-hand{position:absolute;left:0;right:0;bottom:0;z-index:2;display:flex;gap:1.2vw;justify-content:center;flex-wrap:wrap;padding:14px 3vw 18px;background:rgba(15,15,18,.92);border-top:3px solid #5be3e9;max-height:46vh;overflow:auto}
+.cph-hc{cursor:zoom-in}.cph-hc .card{--cw:min(11vw,18vh,130px)}.cph-hc .card.t-server{--cw:min(8vw,13vh,96px)}
+.cph-zoom{position:absolute;inset:0;z-index:3;background:rgba(10,10,12,.86);display:flex;gap:3vw;align-items:center;justify-content:center;padding:4vh 4vw;cursor:pointer}
+.cph-zoom .cz-card .card{--cw:min(300px,32vw,44vh)}.cph-zoom .cz-card .card.t-server{--cw:min(280px,32vw,34vh)}
+.cph-zoom .cz-text{max-width:min(420px,40vw);cursor:auto}.cz-x{position:absolute;right:18px;top:14px}

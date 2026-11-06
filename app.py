@@ -794,7 +794,7 @@ def deck_view(did):
     mine = d.user_id == current_user.id
     if not mine and not d.public:
         abort(403)
-    ids = set(map(int, d.main)) | set(d.partners)
+    ids = set(map(int, d.main)) | set(d.partners) | ({d.cover_id} if d.cover_id else set())
     cards = {c.id: c.to_dict() for c in Card.query.filter(Card.id.in_(ids))} if ids else {}
     sl = db.session.get(Sleeve, d.sleeve_id) if d.sleeve_id else None
     return render_template('deck_view.html', deck=d.to_dict(), cards=cards, owner=d.owner.username if d.owner else '-',
@@ -830,6 +830,8 @@ def api_deck_save():
     d.main_json, d.partners_json, d.operator_id = json.dumps(main), json.dumps(partners), op
     sid = to_int(data.get('sleeve'), 0, 0, 10**9)
     d.sleeve_id = sid if sid and db.session.get(Sleeve, sid) else None
+    cid = to_int(data.get('cover'), 0, 0, 10**9)
+    d.cover_id = cid if cid and db.session.get(Card, cid) else None
     db.session.commit()
     return jsonify(id=d.id, issues=deck_issues(d))
 
@@ -850,7 +852,7 @@ def deck_copy(did):
     if d.user_id != current_user.id and not d.public:
         abort(403)
     n = Deck(user_id=current_user.id, name=f'{d.name} (copy)'[:80], description=d.description,
-             main_json=d.main_json, partners_json=d.partners_json, operator_id=d.operator_id, sleeve_id=d.sleeve_id)
+             main_json=d.main_json, partners_json=d.partners_json, operator_id=d.operator_id, sleeve_id=d.sleeve_id, cover_id=d.cover_id)
     db.session.add(n)
     db.session.commit()
     flash('คัดลอกเด็คไปยังคลังของคุณแล้ว', 'ok')
@@ -1296,6 +1298,9 @@ def migrate():
     cols = {c['name'] for c in inspect(db.engine).get_columns('deck')}
     if 'sleeve_id' not in cols:
         db.session.execute(text('ALTER TABLE deck ADD COLUMN sleeve_id INTEGER'))
+        db.session.commit()
+    if 'cover_id' not in cols:
+        db.session.execute(text('ALTER TABLE deck ADD COLUMN cover_id INTEGER'))
         db.session.commit()
     ucols = {c['name'] for c in inspect(db.engine).get_columns('user')}
     if 'playmat' not in ucols:

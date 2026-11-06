@@ -2,6 +2,7 @@
 {% block content %}
 <div class="wrap">
   <div class="row">
+    <div class="dcover" id="vcover"></div>
     <div class="grow">
       <h1 style="font-size:2rem;margin:0">{{ deck.name }}</h1>
       <div class="mut">โดย {{ owner }}{% if deck.public %} · <span class="pill ok">สาธารณะ</span>{% endif %}
@@ -34,6 +35,7 @@ const by=(a,b)=>C[a].cost-C[b].cost||C[a].name.localeCompare(C[b].name);
 const pc=count(D.partners), mc=D.main;
 $('#vp').innerHTML=Object.keys(pc).filter(i=>C[i]).sort(by).map(i=>tile(i,pc[i])).join('')||'<span class="mut">ยังไม่มี</span>';
 $('#vm').innerHTML=Object.keys(mc).filter(i=>C[i]).sort(by).map(i=>tile(i,mc[i])).join('')||'<span class="mut">ยังไม่มี</span>';
+if(D.cover&&C[D.cover]) $('#vcover').innerHTML=cardHTML(C[D.cover]);
 $('#cp').textContent=D.partners.length+'/4'; $('#cm').textContent=Object.values(mc).reduce((a,b)=>a+b,0)+'/{{ DECK_SIZE }}';
 function detail(c){
   const st=NEU.includes(c.type)?`<div class="isr"><span>ATK <b>${c.atk}</b></span><span>CRIT <b>${c.crit}</b></span><span>DEF <b>${c.def}</b></span></div>`

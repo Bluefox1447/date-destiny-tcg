@@ -14,7 +14,7 @@
   </form>
   <div class="cols">
       {% for d in mine %}
-      <div class="box">
+      <div class="box dtile"><div class="dcover" data-cid="{{ d.cover_id or '' }}"></div>
         <div class="row"><h3 style="margin:0" class="grow">{{ d.name }}</h3>{% if d.public %}<span class="pill ok">สาธารณะ</span>{% endif %}</div>
         <p class="mut" style="margin:4px 0 8px">เด็คหลัก {{ d.size }}/{{ DECK_SIZE }} · Partners {{ d.partners|length }}/4</p>
         {% for i in issues[d.id] %}<div class="pill warn" style="margin:0 4px 4px 0">{{ i }}</div>{% endfor %}
@@ -35,7 +35,7 @@
     <p class="mut" style="margin:0 0 12px">เด็คที่ผู้เล่นคนอื่นเปิดแชร์ไว้ ดูรายละเอียดหรือคัดลอกไปคลังของคุณได้</p>
     <div class="cols">
       {% for d in pub %}
-      <div class="box"><h3 style="margin:0">{{ d.name }}</h3>
+      <div class="box dtile"><div class="dcover" data-cid="{{ d.cover_id or '' }}"></div><h3 style="margin:0">{{ d.name }}</h3>
         <p class="mut" style="margin:4px 0">โดย {{ d.owner.username }} · {{ d.size }} ใบ</p><p>{{ d.description }}</p>
         <div class="row"><a class="btn sm pri" href="{{ url_for('deck_view', did=d.id) }}">ดูเด็ค</a>
         <form method="post" action="{{ url_for('deck_copy', did=d.id) }}"><button class="btn sm pri">คัดลอกไปคลังของฉัน</button></form>
@@ -86,5 +86,9 @@ document.getElementById('slgrid').addEventListener('click',async e=>{const b=e.t
 document.getElementById('pmgrid').addEventListener('click',async e=>{const b=e.target.closest('.pmopt'); if(!b) return;
   const r=await fetch('/api/me/playmat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:b.dataset.k})});
   if(r.ok){toast('เปลี่ยน Playmat แล้ว','ok');loadGear();}});
+fetch('/api/cards').then(r=>r.json()).then(all=>{   /* การ์ดหน้าเด็ค */
+  const by={}; all.forEach(c=>by[c.id]=c);
+  document.querySelectorAll('.dcover[data-cid]').forEach(el=>{const c=by[el.dataset.cid]; if(c){el.innerHTML=cardHTML(c); el.closest('.dtile').classList.add('hascover');}});
+}).catch(()=>{});
 showTab(location.hash.slice(1));
 </script>{% endblock %}

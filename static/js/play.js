@@ -4,10 +4,10 @@ const CODE=document.body.dataset.room, MYID=+document.body.dataset.uid;
 let ACT=MYID, lastTurn=null, atkSel=null, bonusA=0, bonusD=0, combatOn=false;      // ACT = ฝั่งที่กำลังควบคุม (ห้องทดสอบสลับได้)
 const socket=io();
 const SLEEVE={me:'',opp:''};
-let S=null, mode=null, seated=false, autoPay=true, flipLabels=true, dragIid=null, dragCid=null, dragZone=null, lastRoll=null, prevTurn, lastLogN=null, lobbyDone=false, mullDismissed=false, mullSel=new Set(), mullDrag=null, revealInit=false, revealSeen=null, geassInit=false, geassSeen={}, dragToken=null, statusMode=null, freeInit=false, freeSeen={}, MATS=[], MATSEL='b:classic';
+let S=null, mode=null, seated=false, autoPay=true, flipLabels=true, dragIid=null, dragCid=null, dragZone=null, lastRoll=null, prevTurn, lastLogN=null, diceBusyUntil=0, combatWait=null, lobbyDone=false, mullDismissed=false, mullSel=new Set(), mullDrag=null, revealInit=false, revealSeen=null, geassInit=false, geassSeen={}, dragToken=null, statusMode=null, freeInit=false, freeSeen={}, MATS=[], MATSEL='b:classic';
 const FIELD=['attack','protect','partners','server','aura'];
 const GHEX={blue:'#2f8bff',red:'#ff3b4e',yellow:'#ffd23a',green:'#34d27b',purple:'#a15cff',black:'#15151a'}, GTH={blue:'ฟ้า',red:'แดง',yellow:'เหลือง',green:'เขียว',purple:'ม่วง',black:'ดำ'};
-const DICE_TURNS=[3,5,7,9], LINK_MAX=3;
+const LINK_MAX=3, isDiceTurn=n=>n>=3&&n%2===1&&n<=100;   // ทอย D4 ทุกเทิร์นเลขคี่ 3–99 (ยกเว้นเทิร์นที่ 1)
 const ZN={hp:'Firewall (HP)',partners:'Partners',attack:'Attack',protect:'Protect',server:'Server',delect:'Delect',deck:'Deck',hand:'มือ'};
 
 /* ---------------- Socket ---------------- */
@@ -181,7 +181,7 @@ function gameHTML(st,opp){
    <div class="phases">${PH.map(([k,l])=>`<span class="${st.phase===k?'on':''}">${l}</span>`).join('')}</div>`;
   if(!mine) return h+'<p class="mut">รอฝ่ายตรงข้ามเล่น… (คุณยังย้ายการ์ดของตัวเองได้)</p>';
   if(st.phase==='generate'){
-    const own=st.p[ACT].turns, dice=DICE_TURNS.includes(own);
+    const own=st.p[ACT].turns, dice=isDiceTurn(own);
     h+=`<p style="margin:0 0 6px">Generate: จั่วการ์ด 1 ใบ และรับ 2 Code ทันที${dice?` <b style="color:var(--sig)">+ ทอยลูกเต๋า D4 เป็นโค้ดโบนัส (เทิร์นที่ ${own})</b>`:''}</p>
       <button class="btn pri sm" data-do="generate">Generate${dice?' + ทอย D4':''}</button>`;
   }
@@ -462,7 +462,7 @@ function showDice(r){
   $('#dice')?.remove();
   const el=document.createElement('div'); el.id='dice'; el.className='dice-ov';
   el.innerHTML=`<div class="d4wrap"><div class="d4"><span class="d4n">4</span></div><div class="d4cap">${esc(nameOf(r.uid))} ทอยลูกเต๋า D4…</div></div>`;
-  document.body.appendChild(el); if(window.sfx) sfx('dice');
+  document.body.appendChild(el); if(window.sfx) sfx('dice'); diceBusyUntil=Date.now()+3900;   // รอทอยเสร็จก่อนแสดงหน้าเลือก Combat Phase
   const n=$('.d4n',el), cap=$('.d4cap',el), die=$('.d4',el);
   const iv=setInterval(()=>{n.textContent=1+Math.floor(Math.random()*4);},70);
   setTimeout(()=>{clearInterval(iv); n.textContent=r.v; die.classList.add('land'); if(window.sfx) sfx('land'); cap.innerHTML=`<b>${r.v}</b> → โบนัส +${r.v} Code`;},1300);
@@ -564,7 +564,7 @@ function showGeassFx(uid,color){
   document.body.appendChild(el); if(window.sfx) sfx('geass'); setTimeout(()=>el.classList.add('out'),1400); setTimeout(()=>el.remove(),1900);
 }
 /* ---------- หน้าต่างบังคับ/หน้าจอสำคัญ ---------- */
-const avatarBox=(P,cls='')=>`<div class="pennant ${cls}" ${P&&P.avatar?`style="background-image:url('${esc(P.avatar)}')"`:''}>${P&&!P.avatar?`<span>${esc((P.name||'?').slice(0,1).toUpperCase())}</span>`:''}</div>`;
+const avatarBox=(P,cls='')=>`<div class="pennant ${cls}">${P&&P.avatar?`<div class="pimg" style="background-image:url('${esc(P.avatar)}')"></div>`:P?`<span>${esc((P.name||'?').slice(0,1).toUpperCase())}</span>`:''}</div>`;
 function overlays(){
   banner(); lobby(); mullPick(); combatPick();
 }
@@ -576,7 +576,7 @@ function lobby(){
   const key=JSON.stringify([me.ready,me.deck_id,me.name,me.avatar,opp&&[opp.name,opp.ready,opp.avatar,opp.online]]);
   if(el&&el.dataset.k===key) return;
   const opts=decks.map(d=>`<option value="${d.id}" ${d.id===me.deck_id?'selected':''}>${esc(d.name)}</option>`).join('');
-  const html=`<div class="lb-frame"></div><div class="lb-title"><span>${S.host===MYID?'สร้างห้อง':'เข้าร่วมห้อง'}</span></div>
+  const html=`<div class="lb-title"><span>${S.host===MYID?'สร้างห้อง':'เข้าร่วมห้อง'}</span></div>
     <div class="lb-col l">${lab(me)}${avatarBox(me,'big')}
       <label class="lb-deck"><select id="lobbyDeck" aria-label="เด็คของคุณ">${opts||'<option>ยังไม่มีเด็คที่พร้อมเล่น</option>'}</select></label></div>
     <div class="lb-vs">VS</div>
@@ -618,12 +618,27 @@ function combatPick(){
   const st=S.state, me=st&&st.p[ACT];
   const show=!!S.players.find(p=>p.uid===MYID)&&st&&st.phase==='combat'&&st.turn===ACT&&st.winner==null&&st.acts.length<st.combat_no;
   let el=$('#cph'); if(!show){ if(el) el.remove(); return; }
+  if(Date.now()<diceBusyUntil||$('#dice')){            // กำลังทอยลูกเต๋า D4 อยู่ → รอให้จบก่อน
+    if(el) el.remove();
+    if(!combatWait) combatWait=setTimeout(()=>{combatWait=null; overlays();},Math.max(150,diceBusyUntil-Date.now()+120));
+    return;
+  }
   if(el) return;
   el=document.createElement('div'); el.id='cph'; el.className='cph';
-  el.innerHTML=`<div class="cph-title"><span>COMBAT PHASE</span></div><div class="cph-sub">เลือก 1 อย่างสำหรับ Combat Phase ${st.combat_no}/2</div>
+  el.innerHTML=`<div class="cph-title"><span>COMBAT PHASE</span></div><div class="cph-sub">เลือก 1 อย่างสำหรับ Combat Phase ${st.combat_no}/2 <button class="btn sm" type="button" data-hand="1">แสดงการ์ดบนมือ</button></div>
+    <div class="cph-hand hide" id="cphHand"></div><div class="cph-zoom hide" id="cphZoom"></div>
     <div class="cph-cards">${[['summon','SUMMON','เรียก Neurous ลงสนาม จ่ายค่าคอสการ์ด'],['combat','COMBAT','ให้ Neurous ต่อสู้กัน หรือโจมตีผู้เล่น'],['move','MOVE','ย้าย Neurous ระหว่าง Attack/Protect จ่าย 1 Code/ใบ']]
       .map(([k,t,d])=>`<button class="cph-card" type="button" data-pick="${k}"><span class="t">${t}</span><small>${d}</small></button>`).join('')}</div>`;
-  el.addEventListener('click',e=>{const b=e.target.closest('[data-pick]'); if(b){ if(window.sfx) sfx('click'); act('combat_act',{name:b.dataset.pick}); }});
+  el.addEventListener('click',e=>{
+    const hb=e.target.closest('[data-hand]');
+    if(hb){const box=$('#cphHand'), open=box.classList.contains('hide');
+      if(open){const hand=(S.state.p[ACT].z.hand||[]); box.innerHTML=hand.length?hand.map(c=>{const cd=S.cards[c.cid]; return cd?`<div class="cph-hc" data-cid="${c.cid}" data-iid="${c.iid}">${cardHTML(cd)}</div>`:'';}).join(''):'<span class="mut">ไม่มีการ์ดบนมือ</span>';}
+      box.classList.toggle('hide',!open); hb.textContent=open?'ซ่อนการ์ดบนมือ':'แสดงการ์ดบนมือ'; $('#cphZoom').classList.add('hide'); return;}
+    const hc=e.target.closest('.cph-hc');
+    if(hc){const cd=S.cards[hc.dataset.cid], inst=instIndex()[hc.dataset.iid], z=$('#cphZoom');
+      z.innerHTML=`<div class="cz-card">${cardHTML(cd,{big:true})}</div><div class="cz-text itext">${detailHTML(cd,inst)}</div><button class="btn sm cz-x" type="button">ปิด ✕</button>`; z.classList.remove('hide'); return;}
+    if(e.target.closest('.cz-x')||e.target.id==='cphZoom'){$('#cphZoom').classList.add('hide'); return;}
+    const b=e.target.closest('[data-pick]'); if(b){ if(window.sfx) sfx('click'); act('combat_act',{name:b.dataset.pick}); }});
   document.body.appendChild(el);
 }
 function banner(){

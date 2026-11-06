@@ -13,7 +13,12 @@ MAX_CODE = 10
 COUNTER_DAMAGE = True     # แบบ Hearthstone: เป้าหมายสวนกลับด้วยค่า ATK ของตัวเอง (ตั้งเป็น False ถ้าไม่ต้องการให้สวนกลับ)
 NEUROUS = ('entity', 'partners')
 LINK_MAX = 3              # Ship ที่ Link เข้ากับ Neurous หนึ่งใบได้ไม่เกิน 3 ใบ
-DICE_TURNS = (3, 5, 7, 9) # เทิร์นที่ n ของผู้เล่นแต่ละคน ที่ได้ทอยลูกเต๋า D4 เป็นโค้ดโบนัส
+DICE_MAX_TURN = 100             # เทิร์นเลขคี่ตั้งแต่เทิร์นที่ 3 ถึง 99 (ยกเว้นเทิร์นที่ 1) ได้ทอย D4 เป็นโค้ดโบนัส
+
+
+def is_dice_turn(n):
+    """เทิร์นที่ n ของผู้เล่นแต่ละคน: เลขคี่ ตั้งแต่ 3 ถึง 99 ได้ทอย D4"""
+    return n >= 3 and n % 2 == 1 and n <= DICE_MAX_TURN
 DICE_SIDES = 4
 DICE_FREE = (4, 6, 8, 12, 20)        # ลูกเต๋าทอยเล่น
 GEASS = {'blue': 'ฟ้า', 'red': 'แดง', 'yellow': 'เหลือง', 'green': 'เขียว', 'purple': 'ม่วง', 'black': 'ดำ'}
@@ -346,13 +351,13 @@ def act(room, uid, d):
             return 'ยังอยู่ในขั้น Setup', None
         if not my_turn:
             return 'ไม่ใช่เทิร์นของคุณ', None
-    if t == 'generate':          # Generate: จั่วการ์ด 1 ใบ และได้รับ 2 Code ทันที (เทิร์น 3/5/7/9 ทอย D4 เป็นโบนัส)
+    if t == 'generate':          # Generate: จั่วการ์ด 1 ใบ และได้รับ 2 Code ทันที (เทิร์นเลขคี่ 3, 5, 7 … 99 ทอย D4 เป็นโบนัส ยกเว้นเทิร์นที่ 1)
         if s['phase'] != 'generate':
             return 'ไม่ได้อยู่ใน Generate Phase', None
         got = _draw_n(me, 1)
         me['code'] = min(MAX_CODE, me['code'] + 2)
         msg = ('Generate: จั่วการ์ด 1 ใบ' if got else 'Generate: เด็คหมด จั่วไม่ได้') + ' และได้ 2 Code'
-        if me['turns'] in DICE_TURNS:
+        if is_dice_turn(me['turns']):
             v = random.randint(1, DICE_SIDES)
             s['roll_seq'] += 1
             s['roll'] = {'id': s['roll_seq'], 'uid': uid, 'v': v, 'turn': me['turns'], 'ts': int(time.time() * 1000)}
