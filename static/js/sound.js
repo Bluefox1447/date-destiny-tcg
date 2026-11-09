@@ -9,19 +9,27 @@
   const audio=new Audio(); audio.preload='none'; audio.volume=volume;
   vol.value=Math.round(volume*100);
 
+  // เล่นอัตโนมัติทันทีที่เข้าหน้า (รวมห้องเล่น) ถ้าเบราว์เซอร์บล็อก จะขึ้นป้ายให้แตะ แล้วเริ่มเล่นเมื่อมีการแตะ/กดครั้งแรก
+  const listeners=[]; let hint=null;
+  const emit=()=>listeners.forEach(f=>{try{f();}catch(e){}});
+  const showHint=()=>{ if(hint||!on||!tracks.length) return; hint=document.createElement('div'); hint.className='sndhint'; hint.textContent='🔇 แตะที่ไหนก็ได้เพื่อเปิดเพลงประกอบ'; document.body.appendChild(hint); };
+  const hideHint=()=>{ if(hint){hint.remove(); hint=null;} };
+  const tryPlay=()=>{ const p=audio.play(); if(p&&p.then) p.then(hideHint,showHint); };
+  audio.addEventListener('playing',hideHint);
   function render(){
     btn.textContent=on?'🔊':'🔇'; btn.classList.toggle('off',!on);
     const t=tracks[idx]; nm.textContent=on&&t?'♪ '+t.title:''; nxt.style.display=tracks.length>1?'':'none';
+    emit();
   }
   function playCurrent(resume){
     if(!on||!tracks.length) return;
     const t=tracks[idx]; if(!audio.src||!audio.src.endsWith(t.url)) audio.src=t.url;
     if(resume&&get('snd_trk','')===String(t.id)){const p=+get('snd_pos','0'); if(p>0&&audio.readyState===0) audio.addEventListener('loadedmetadata',()=>{try{audio.currentTime=p}catch(e){}},{once:true});}
-    audio.play().catch(()=>{});
+    tryPlay();
   }
   function next(){
     if(!tracks.length) return; idx=(idx+1)%tracks.length; set('snd_idx',idx); set('snd_pos',0); set('snd_trk',tracks[idx].id);
-    audio.src=tracks[idx].url; render(); if(on) audio.play().catch(()=>{});
+    audio.src=tracks[idx].url; render(); if(on) tryPlay();
   }
   audio.addEventListener('ended',()=>{fails=0;next();});
   audio.addEventListener('error',()=>{if(++fails<=tracks.length) setTimeout(next,400);});
@@ -48,13 +56,17 @@
   };
   window.sfx=name=>{ if(on&&FX[name]) try{FX[name]();}catch(e){} };
 
-  btn.addEventListener('click',()=>{on=!on; set('snd_on',on?1:0); if(on){ctx();playCurrent(true);} else audio.pause(); render();});
+  btn.addEventListener('click',()=>{on=!on; set('snd_on',on?1:0); if(on){ctx();playCurrent(true);} else {audio.pause(); hideHint();} render();});
   nxt.addEventListener('click',()=>{if(!on){on=true;set('snd_on',1);} next(); ctx();});
   vol.addEventListener('input',()=>{volume=vol.value/100; audio.volume=volume; set('snd_vol',vol.value);});
   // เบราว์เซอร์บล็อกเสียงอัตโนมัติ: เริ่มเล่นเมื่อผู้ใช้คลิก/กดครั้งแรกบนหน้า
-  const unlock=()=>{ctx(); if(on&&audio.paused) playCurrent(true); document.removeEventListener('pointerdown',unlock); document.removeEventListener('keydown',unlock);};
-  document.addEventListener('pointerdown',unlock); document.addEventListener('keydown',unlock);
+  const unlock=()=>{ctx(); if(on&&audio.paused) playCurrent(true);
+    ['pointerdown','keydown','touchstart','click'].forEach(ev=>document.removeEventListener(ev,unlock,true));};
+  ['pointerdown','keydown','touchstart','click'].forEach(ev=>document.addEventListener(ev,unlock,true));
 
-  fetch('/api/music').then(r=>r.json()).then(l=>{tracks=l||[]; if(idx>=tracks.length) idx=0; render();}).catch(()=>{render();});
+  fetch('/api/music').then(r=>r.json()).then(l=>{tracks=l||[]; if(idx>=tracks.length) idx=0; render(); playCurrent(true);}).catch(()=>{render();});
+  // ให้หน้าอื่น (เช่น ห้องเล่นโหมดเต็มจอที่ซ่อนแถบเมนู) ควบคุมเพลงได้
+  window.ddSound={isOn:()=>on, title:()=>(tracks[idx]&&tracks[idx].title)||'', hasTracks:()=>tracks.length>0, volume:()=>volume,
+    toggle:()=>btn.click(), next:()=>nxt.click(), setVolume:v=>{vol.value=v; vol.dispatchEvent(new Event('input'));}, onChange:f=>listeners.push(f)};
   render();
 })();

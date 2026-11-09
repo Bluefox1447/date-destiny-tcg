@@ -104,7 +104,7 @@ function render(){
   plate('#mePlate',me,mp); plate('#oppPlate',opp,op); applyMat();
   $('#hand').innerHTML=mp?mp.z.hand.map(c=>cardEl(c,'hand','me',false)).join(''):'';
   $('#oppHand').innerHTML=op?op.z.hand.map(c=>cardEl(c,'hand','opp')).join(''):'';
-  panel(); updDiceLast();
+  panel(); updDiceLast(); updSnd();
   $('#log').innerHTML=S.log.map(l=>{const t=new Date(l.t*1000).toTimeString().slice(0,5);
     return `<div class="${l.k}"><time>${t}</time>${l.k==='chat'?`<b>${esc(l.who)}:</b> ${esc(l.text)}`:`${esc(l.who)} ${esc(l.text)}`}</div>`}).join('');
   $('#log').scrollTop=1e9;
@@ -302,6 +302,8 @@ document.addEventListener('click',e=>{
   else if(k==='generate') act('generate');
   else if(k==='fullscreen') toggleFS();
   else if(k==='roll') act('roll',{sides:+b.dataset.s});
+  else if(k==='snd_toggle'){ if(window.ddSound) ddSound.toggle(); }
+  else if(k==='snd_next'){ if(window.ddSound) ddSound.next(); }
   else if(k==='protatk') act('protect_atk',{on:!(S.state&&S.state.p[ACT].protect_atk!==false)});
   else if(k==='draw') act('draw',{n:+b.dataset.n||1});
   else if(k==='peek') act('peek',{n:+b.dataset.n||0});
@@ -518,9 +520,21 @@ function extrasHTML(compact){
     <h3>กีอัส</h3>
     <div class="geassbtns">${Object.keys(GHEX).map(c=>`<button type="button" class="gbtn" data-do="geass" data-c="${c}" style="--gc:${GHEX[c]}" title="กีอัสสี${GTH[c]}" aria-label="กีอัสสี${GTH[c]}"></button>`).join('')}</div>
     ${compact?'':'<p class="hint">ผู้เล่นทั้งสองฝ่ายกดได้ทุกเมื่อ กดสีเดิมซ้ำเพื่อปิด สีที่เลือกจะแสดงข้างชื่อผู้เล่นให้ทั้งห้องเห็น</p>'}
+    <h3>เพลง</h3>
+    <div class="sndrow"><button class="btn sm" type="button" data-do="snd_toggle" data-snd="btn" title="เปิด/ปิดเพลง">🔊</button><button class="btn sm" type="button" data-do="snd_next" title="เพลงถัดไป">⏭</button>
+      <input type="range" class="sndvol" min="0" max="100" data-snd="vol" aria-label="ระดับเสียง"></div>
+    <div class="mut sndtitle" data-snd="title"></div>
     <h3>ทอยเต๋า</h3><div class="dicebtns">${dice}</div>
     ${compact?'':'<div class="dlast mut" data-dlast>ยังไม่มีการทอย</div>'}</div>`;
 }
+function updSnd(){
+  const d=window.ddSound; if(!d) return;
+  $$('[data-snd="btn"]').forEach(b=>b.textContent=d.isOn()?'🔊':'🔇');
+  $$('[data-snd="vol"]').forEach(r=>{ if(document.activeElement!==r) r.value=Math.round(d.volume()*100); });
+  $$('[data-snd="title"]').forEach(t=>t.textContent=d.hasTracks()?(d.isOn()?'♪ '+d.title():'ปิดเสียงอยู่'):'ยังไม่มีเพลง (Admin เพิ่มได้ที่ จัดการระบบ → เพลง)');
+}
+document.addEventListener('input',e=>{ if(e.target.matches&&e.target.matches('[data-snd="vol"]')&&window.ddSound) ddSound.setVolume(+e.target.value); });
+if(window.ddSound) ddSound.onChange(updSnd);
 function updDiceLast(){
   const el=$('[data-dlast]'); if(!el||!S||!S.state) return;
   const rolls=S.state.rolls||{}, {me,opp}=sides();
