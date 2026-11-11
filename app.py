@@ -65,7 +65,7 @@ DECK_SIZE = int(os.getenv('DECK_SIZE', 50))
 MAX_COPIES = int(os.getenv('MAX_COPIES', 4))
 ADMIN_EMAILS = {e.strip().lower() for e in os.getenv('ADMIN_EMAILS', '').split(',') if e.strip()}
 COLORS = [('red', 'แดง'), ('blue', 'น้ำเงิน'), ('green', 'เขียว'), ('yellow', 'เหลือง'),
-          ('purple', 'ม่วง'), ('black', 'ดำ'), ('white', 'ขาว'), ('none', 'ไร้สี')]
+          ('purple', 'ม่วง'), ('black', 'ดำ'), ('none', 'ไร้สี')]
 TYPES = [('entity', 'Entity (Neurous)'), ('partners', 'Partners'), ('ship', 'Ship'), ('server', 'Server')]
 NEUROUS = ('entity', 'partners')      # ประเภทที่วางใน Partners Zone / ลง Attack-Protect ได้
 
@@ -1299,6 +1299,8 @@ def migrate():
     if 'sleeve_id' not in cols:
         db.session.execute(text('ALTER TABLE deck ADD COLUMN sleeve_id INTEGER'))
         db.session.commit()
+    db.session.execute(text("UPDATE card SET color='none' WHERE color='white'"))   # เลิกใช้หมวดสี "ขาว": การ์ดเดิมย้ายไปเป็น "ไร้สี"
+    db.session.commit()
     if 'cover_id' not in cols:
         db.session.execute(text('ALTER TABLE deck ADD COLUMN cover_id INTEGER'))
         db.session.commit()

@@ -8,7 +8,7 @@ function toast(msg,kind){
 setTimeout(()=>document.querySelectorAll('#flash div').forEach(d=>d.remove()),5000);
 
 const TYPE_LABEL={entity:'Entity',partners:'Partners',ship:'Ship',server:'Server'};
-const COLOR_HEX={red:'#d4505a',blue:'#4b8de0',green:'#3fb27d',yellow:'#e2b832',purple:'#9a62d0',black:'#55565f',white:'#e9ebef',none:'#8a8d93'};
+const COLOR_HEX={red:'#d4505a',blue:'#4b8de0',green:'#3fb27d',yellow:'#e2b832',purple:'#9a62d0',black:'#55565f',none:'#8a8d93'};
 
 /** วาดการ์ดด้วย HTML/CSS (ใช้ภาพที่ Admin อัปโหลดถ้ามี) */
 function badges(o){

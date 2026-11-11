@@ -7,7 +7,7 @@
   <div class="in">
     <h1>เก็บ Code ตั้งแนวรับ<br>แล้วบุกทะลุ Firewall</h1>
     <p class="lead">Date Destiny TCG เกมการ์ดสองคนที่ Neurous ต้องสู้กันบน Attack Zone และ Protect Zone จัดเด็ค แชร์เด็ค แล้วเปิดห้องเล่นกับเพื่อนได้ในเบราว์เซอร์ ไม่ต้องโหลดโปรแกรม</p>
-    <p class="lead sub">วางแผนใช้ Code ให้คุ้ม เรียก Neurous ลงสนาม ลิงก์ Ship เสริมพลัง แล้วบุกทำลาย HP ของอีกฝ่ายให้หมดก่อนใคร</p>
+    <p class="lead sub">วางแผนใช้ Code ให้คุ้ม เรียก Neurous ลงสนาม ลิงก์ Ship เสริมพลัง แล้วบุกทำลาย Firewall Zone ของอีกฝ่ายให้หมดก่อนใคร</p>
     <div class="row cta">
       <a class="btn pri" href="{{ url_for('rooms') }}">เปิดห้องเล่น</a>
       <a class="btn" href="{{ url_for('cards') }}">ดูการ์ดทั้งหมด ({{ n_cards }})</a>
@@ -19,7 +19,7 @@
 <div class="wrap" style="padding-top:10px">
   <section class="mat-show">
     <h2>สนามแข่ง</h2>
-    <p class="mut">Attack Zone วางได้ 4 ใบ · Protect Zone 3 ใบ · Aura Zone (Ship) 3 ใบ · Firewall Zone คือ HP ตอนเริ่ม 8 ใบ · แถบกลางเก็บ Code 1–10</p>
+    <p class="mut">Attack Zone วางได้ 4 ใบ · Protect Zone 3 ใบ · Aura Zone (Ship) 3 ใบ · Firewall Zone ตอนเริ่ม 8 ใบ · แถบกลางเก็บ Code 1–10</p>
     <div class="mm" aria-label="ภาพสนามแข่ง">
       <div class="mm-half opp">
         <div class="mm-col">{{ zn('Delect') }}{{ zn('Deck') }}{{ zn('Aura','aura') }}</div>

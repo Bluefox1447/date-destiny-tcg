@@ -1,5 +1,5 @@
 """เอนจินห้องเล่นแบบ Manual ของ Date Destiny TCG (เก็บสถานะในหน่วยความจำ)
-เซิร์ฟเวอร์เป็นผู้ถือสถานะจริง และซ่อนข้อมูลที่อีกฝ่ายไม่ควรเห็น (มือ/เด็ค/HP คว่ำ) ก่อนส่งให้ client
+เซิร์ฟเวอร์เป็นผู้ถือสถานะจริง และซ่อนข้อมูลที่อีกฝ่ายไม่ควรเห็น (มือ/เด็ค/Firewall คว่ำ) ก่อนส่งให้ client
 """
 import random
 import time
@@ -27,7 +27,7 @@ FIELD_ZONES = ('attack', 'protect', 'partners', 'server', 'aura')
 HP_START = 8
 HAND_START = 4
 Z_TH = {'deck': 'Deck', 'hand': 'มือ', 'attack': 'Attack Zone', 'protect': 'Protect Zone',
-        'partners': 'Partners Zone', 'server': 'Server Zone', 'aura': 'Aura Zone', 'hp': 'Firewall Zone (HP)',
+        'partners': 'Partners Zone', 'server': 'Server Zone', 'aura': 'Aura Zone', 'hp': 'Firewall Zone',
         'delect': 'Delect Zone'}
 
 
@@ -153,7 +153,7 @@ def view(room, viewer):
 
 
 def _hit(room, victim_uid, n, by_uid):
-    """ลด HP ของ victim ลง n ใบ (การ์ด HP ขึ้นมือเจ้าของ) เมื่อ Firewall Zone เหลือ 0 → by_uid ชนะทันที"""
+    """ลด Firewall Zone ของ victim ลง n ใบ (การ์ดขึ้นมือเจ้าของ) เมื่อ Firewall Zone เหลือ 0 → by_uid ชนะทันที"""
     s = room['state']
     z = s['p'][victim_uid]['z']
     for _ in range(n):
@@ -163,7 +163,7 @@ def _hit(room, victim_uid, n, by_uid):
         c['up'], c['tap'] = False, False
         z['hand'].append(c)
     vn = seat(room, victim_uid)['name']
-    _log(room, 'ระบบ', f"HP ของ {vn} เหลือ {len(z['hp'])} (การ์ด HP ขึ้นมือ)")
+    _log(room, 'ระบบ', f"Firewall Zone ของ {vn} เหลือ {len(z['hp'])} ใบ (การ์ดขึ้นมือ)")
     if not z['hp'] and by_uid is not None:
         s['winner'] = by_uid
         _log(room, 'ระบบ', f"Firewall Zone ของ {vn} เหลือ 0 → {seat(room, by_uid)['name']} ชนะ!")
@@ -185,11 +185,12 @@ def _eff(room, c):
     return {'atk': max(0, a), 'crit': max(0, k), 'def': d}
 
 
-def _drop_links(z, c):
-    """Neurous ออกจากสนาม → Ship ที่ลิงก์อยู่ทั้งหมดลง Delect Zone"""
+def _drop_links(z, c, ps=None):
+    """Neurous ออกจากสนาม → Ship ที่ลิงก์อยู่ทั้งหมดลง Delect Zone (Ship ของอีกฝ่ายกลับไป Delect Zone ของเจ้าของมัน)"""
     for ln in c.get('links', []):
         ln['up'], ln['tap'] = True, False
-        z['delect'].append(ln)
+        own = ln.pop('owner', None)
+        (ps[own]['z'] if ps and own in ps else z)['delect'].append(ln)
     c['links'] = []
     c['mod'] = {'atk': 0, 'crit': 0, 'def': 0}     # ออกจากสนาม/ถูกทำลาย: ล้างบัพและสถานะ
     c['st'] = []
@@ -294,7 +295,7 @@ def act(room, uid, d):
         return None, None
     if t == 'mulligan':          # เปลี่ยนการ์ดบนมือ: เลือกเฉพาะใบที่ต้องการ (iids) ถ้าไม่ส่งมาคือเปลี่ยนทั้งมือ
         if not su['drew'] or su['mull'] or su['hp']:
-            return 'เปลี่ยนมือได้ 1 ครั้ง และต้องทำก่อนวาง HP', None
+            return 'เปลี่ยนมือได้ 1 ครั้ง และต้องทำก่อนวาง Firewall Zone', None
         ids = d.get('iids')
         if ids is None:
             chosen = list(z['hand'])
@@ -318,14 +319,14 @@ def act(room, uid, d):
         return None, None
     if t == 'setup_hp':
         if not su['drew'] or su['hp']:
-            return 'ต้องจั่วมือก่อน (หรือวาง HP ไปแล้ว)', None
+            return 'ต้องจั่วมือก่อน (หรือวาง Firewall Zone ไปแล้ว)', None
         for _ in range(HP_START):
             if z['deck']:
                 c = z['deck'].pop(0)
                 c['up'] = False
                 z['hp'].append(c)
         su['hp'] = True
-        L(f'วางการ์ด {HP_START} ใบลง HP คว่ำหน้า')
+        L(f'วางการ์ด {HP_START} ใบลง Firewall Zone คว่ำหน้า')
         return None, None
     if t == 'ready':
         if not (su['placed'] and su['drew'] and su['hp']):
@@ -432,12 +433,13 @@ def act(room, uid, d):
         atk = ae['atk'] + ba
         an = ai.get('name', '?')
         if d.get('target') == 'player':
-            if oz['protect']:
-                return 'ต้องทำให้ Protect Zone ของฝั่งตรงข้ามว่างก่อนจึงโจมตีผู้เล่นได้', None
+            ignore = bool(d.get('ignore_protect'))      # ปุ่ม "โจมตี Firewall Zone โดยตรง" ข้าม Protect Zone
+            if oz['protect'] and not ignore:
+                return 'ต้องทำให้ Protect Zone ของฝั่งตรงข้ามว่างก่อน (หรือใช้ปุ่มโจมตี Firewall Zone โดยตรง)', None
             dmg = max(1, ae['crit'])
             s['attacked'].append(ac['iid'])
             ac['tap'], ac['up'] = True, True
-            L(f"{an} โจมตี {opp['name']} โดยตรง (CRIT {ae['crit']}) → HP −{dmg}")
+            L(f"{an} โจมตี Firewall Zone ของ {opp['name']} โดยตรง{' (ข้าม Protect Zone)' if oz['protect'] else ''} (CRIT {ae['crit']}) → Firewall −{dmg}")
             _hit(room, opp['uid'], dmg, uid)
             return None, None
         tc = tzone = None                     # เป้าหมาย: การ์ดใบไหนก็ได้บนสนามฝั่งตรงข้าม
@@ -470,13 +472,13 @@ def act(room, uid, d):
         if dead_t:
             oz[tzone].remove(tc)
             tc['tap'], tc['dmg'] = False, 0
-            _drop_links(oz, tc)
+            _drop_links(oz, tc, s['p'])
             oz['delect'].append(tc)
             msg += f" · {tn} ถูกทำลาย"
         if dead_a:
             z[azone].remove(ac)
             ac['tap'], ac['dmg'] = False, 0
-            _drop_links(z, ac)
+            _drop_links(z, ac, s['p'])
             z['delect'].append(ac)
             msg += f" · {an} ถูกทำลาย"
         L(msg)
@@ -487,6 +489,27 @@ def act(room, uid, d):
         n = max(1, min(10, int(d.get('n', 1))))
         got = _draw_n(me, n)
         L(f'จั่วการ์ด {got} ใบ')
+        return None, None
+    if t in ('mill', 'to_hp'):   # mill = ทิ้งการ์ดบนสุดของกองลง Delect Zone · to_hp = วางการ์ดบนสุดของกองลง Firewall Zone (คว่ำ) เลือกจำนวนได้
+        try:
+            n = int(d.get('n', 1))
+        except (TypeError, ValueError):
+            return 'จำนวนไม่ถูกต้อง', None
+        if n < 1:
+            return 'จำนวนต้องมากกว่า 0', None
+        n = min(n, len(z['deck']))
+        if n == 0:
+            return 'ไม่มีการ์ดในกองเด็คแล้ว', None
+        for _ in range(n):
+            c = z['deck'].pop(0)
+            c['tap'], c['dmg'] = False, 0
+            if t == 'mill':
+                c['up'] = True
+                z['delect'].append(c)
+            else:
+                c['up'] = False
+                z['hp'].append(c)
+        L(f'ทิ้งการ์ดบนสุดของกองเด็ค {n} ใบ → Delect Zone' if t == 'mill' else f'วางการ์ดบนสุดของกองเด็ค {n} ใบลง Firewall Zone (คว่ำ)')
         return None, None
     if t == 'shuffle':
         random.shuffle(z['deck'])
@@ -566,12 +589,22 @@ def act(room, uid, d):
         to = d.get('to') if d.get('to') in ('hand', 'delect') else 'delect'
         tgt['links'].remove(ln)
         ln['up'] = to != 'hand'
-        z[to].append(ln)
-        L(f"ถอด Link {_cname(room, ln)} ออกจาก {_cname(room, tgt)} → {Z_TH[to]}")
+        own = ln.pop('owner', None)                       # Ship ของอีกฝ่าย → กลับไปที่เจ้าของ
+        dest = s['p'][own]['z'] if own in s['p'] else z
+        dest[to].append(ln)
+        L(f"ถอด Link {_cname(room, ln)} ออกจาก {_cname(room, tgt)} → {Z_TH[to]}{' ของ ' + seat(room, own)['name'] if own in s['p'] and own != uid else ''}")
         return None, None
     iid = d.get('iid')
     fr, i, c = find(me, iid)
-    if t == 'link':              # Link: เอา Ship ไปติดกับ Neurous บนสนาม (ได้ไม่เกิน LINK_MAX ใบต่อ Neurous)
+    if t == 'link':              # Link: เอา Ship ไปติดกับ Neurous บนสนามเรา (ไม่เกิน LINK_MAX ใบต่อ Neurous) Ship ของอีกฝ่ายที่อยู่บนสนามก็ Link ได้
+        foreign = None
+        if not c and opp:                                  # ไม่ใช่ของเรา → ลองหา Ship ในสนามของอีกฝ่าย
+            oz_ = s['p'][opp['uid']]['z']
+            for zn in ('server', 'partners', 'attack', 'protect'):
+                x = next((k for k in oz_[zn] if k['iid'] == d.get('iid')), None)
+                if x:
+                    foreign, c, fr, i = (oz_, zn), x, zn, oz_[zn].index(x)
+                    break
         if not c:
             return 'ไม่พบการ์ด', None
         si = room['cards'].get(str(c['cid']), {})
@@ -581,6 +614,8 @@ def act(room, uid, d):
             return 'Ship ที่วางใน Aura Zone แล้ว Link ไม่ได้', None
         if fr not in ('hand', 'server', 'partners', 'attack', 'protect'):
             return 'ย้าย Ship มาที่มือหรือสนามก่อน', None
+        if foreign and not c.get('up'):
+            return 'Ship ของอีกฝ่ายที่คว่ำอยู่ Link ไม่ได้', None
         tgt = next((x for zn in ('attack', 'protect') for x in z[zn] if x['iid'] == d.get('target')), None)
         if not tgt or tgt is c:
             return 'เลือก Neurous บนสนามของคุณเป็นเป้าหมาย Link', None
@@ -588,10 +623,12 @@ def act(room, uid, d):
             return 'Link ได้เฉพาะกับ Neurous', None
         if len(tgt['links']) >= LINK_MAX:
             return f'Link ได้ไม่เกิน {LINK_MAX} ใบต่อ Neurous', None
-        z[fr].pop(i)                       # Link ฟรี ไม่เสียค่าคอส
+        (foreign[0][foreign[1]] if foreign else z[fr]).pop(i)        # Link ฟรี ไม่เสียค่าคอส
         c['up'], c['tap'], c['dmg'] = True, False, 0
+        if foreign:
+            c['owner'] = opp['uid']                       # จำเจ้าของ: ถอด Link หรือ Neurous หาย → Ship กลับไปหาเจ้าของ
         tgt['links'].append(c)
-        L(f"Link {si.get('name', '?')} → {_cname(room, tgt)} ({len(tgt['links'])}/{LINK_MAX}) ฟรี")
+        L(f"Link {'Ship ของ ' + opp['name'] + ' ' if foreign else ''}{si.get('name', '?')} → {_cname(room, tgt)} ({len(tgt['links'])}/{LINK_MAX}) ฟรี")
         return None, None
     if t in ('tap', 'flip', 'ctr', 'move', 'dmg', 'mod') and not c:
         return 'ไม่พบการ์ด', None
@@ -607,7 +644,7 @@ def act(room, uid, d):
         if fr in ('attack', 'protect') and c['dmg'] > 0 and c['dmg'] >= _eff(room, c)['def']:
             z[fr].remove(c)                       # DEF หมด = ถูกทำลาย ลง Delect Zone
             c['tap'], c['up'], c['dmg'] = False, True, 0
-            _drop_links(z, c)
+            _drop_links(z, c, s['p'])
             z['delect'].append(c)
             L(f"{info.get('name', '?')} ถูกทำลาย (ดาเมจถึงค่า DEF)")
         return None, None
@@ -624,7 +661,7 @@ def act(room, uid, d):
         if c['dmg'] > 0 and c['dmg'] >= _eff(room, c)['def']:      # DEF ลดลงจนต่ำกว่าดาเมจที่สะสม = ถูกทำลาย
             z[fr].remove(c)
             c['tap'], c['up'], c['dmg'] = False, True, 0
-            _drop_links(z, c)
+            _drop_links(z, c, s['p'])
             z['delect'].append(c)
             L(f"{_cname(room, c)} ถูกทำลาย (DEF ลดลงต่ำกว่าดาเมจ)")
         return None, None
@@ -653,7 +690,7 @@ def act(room, uid, d):
         me['code'] -= cost
         z[fr].pop(i)
         if fr in ('attack', 'protect') and to not in ('attack', 'protect'):
-            _drop_links(z, c)
+            _drop_links(z, c, s['p'])
         c['tap'] = False
         c['dmg'] = 0
         if to in ('hand', 'deck', 'hp', 'delect'):

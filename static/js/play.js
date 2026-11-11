@@ -4,11 +4,12 @@ const CODE=document.body.dataset.room, MYID=+document.body.dataset.uid;
 let ACT=MYID, lastTurn=null, atkSel=null, bonusA=0, bonusD=0, combatOn=false;      // ACT = ฝั่งที่กำลังควบคุม (ห้องทดสอบสลับได้)
 const socket=io();
 const SLEEVE={me:'',opp:''};
-let S=null, mode=null, seated=false, autoPay=true, flipLabels=true, dragIid=null, dragCid=null, dragZone=null, lastRoll=null, prevTurn, lastLogN=null, diceBusyUntil=0, combatWait=null, lobbyDone=false, mullDismissed=false, mullSel=new Set(), mullDrag=null, revealInit=false, revealSeen=null, geassInit=false, geassSeen={}, dragToken=null, statusMode=null, freeInit=false, freeSeen={}, MATS=[], MATSEL='b:classic';
+let S=null, mode=null, seated=false, autoPay=true, flipLabels=true, dragIid=null, dragCid=null, dragZone=null, lastRoll=null, prevTurn, lastLogN=null, dragForeign=false, diceBusyUntil=0, combatWait=null, lobbyDone=false, mullDismissed=false, mullSel=new Set(), mullDrag=null, revealInit=false, revealSeen=null, geassInit=false, geassSeen={}, dragToken=null, statusMode=null, freeInit=false, freeSeen={}, MATS=[], MATSEL='b:classic';
 const FIELD=['attack','protect','partners','server','aura'];
+const FOREIGN_LINK_Z=['server','partners','attack','protect'];   // Ship ของอีกฝ่ายบนสนามที่ Link ได้
 const GHEX={blue:'#2f8bff',red:'#ff3b4e',yellow:'#ffd23a',green:'#34d27b',purple:'#a15cff',black:'#15151a'}, GTH={blue:'ฟ้า',red:'แดง',yellow:'เหลือง',green:'เขียว',purple:'ม่วง',black:'ดำ'};
 const LINK_MAX=3, isDiceTurn=n=>n>=3&&n%2===1&&n<=100;   // ทอย D4 ทุกเทิร์นเลขคี่ 3–99 (ยกเว้นเทิร์นที่ 1)
-const ZN={hp:'Firewall (HP)',partners:'Partners',attack:'Attack',protect:'Protect',server:'Server',delect:'Delect',deck:'Deck',hand:'มือ'};
+const ZN={hp:'Firewall',partners:'Partners',attack:'Attack',protect:'Protect',server:'Server',delect:'Delect',deck:'Deck',hand:'มือ'};
 
 /* ---------------- Socket ---------------- */
 socket.on('connect',()=>socket.emit('join',{code:CODE}));
@@ -57,7 +58,8 @@ const nameOf=uid=>(S.players.find(p=>p.uid===uid)||{}).name||'?';
 function cardEl(c,zn,side,mini=true){
   const mine=side==='me'&&seated;
   const back=c.h||(!c.up&&(zn==='hp'||zn==='deck'));
-  const base=`data-iid="${c.iid}" data-zone="${zn}" data-side="${side}"${mine?' draggable="true"':''}`;
+  const fship=!mine&&seated&&side==='opp'&&!c.h&&c.up&&FOREIGN_LINK_Z.includes(zn)&&(S.cards[c.cid]||{}).type==='ship';   // Ship ของอีกฝ่าย: ลากมา Link ได้
+  const base=`data-iid="${c.iid}" data-zone="${zn}" data-side="${side}"${mine||fship?' draggable="true"':''}`;
   if(back){const sl=SLEEVE[side]; return `<div class="card ${mini?'mini':''} back ${sl?'img':''} ${c.tap?'tap':''}" ${base}${sl?` style="background-image:url('${esc(sl)}')"`:''}>${sl?'':'<i>DD</i>'}</div>`;}
   const cd=S.cards[c.cid]; if(!cd) return '';
   return cardHTML(cd,{mini,cls:(c.tap?'tap ':'')+(!c.up&&zn!=='hand'?'dn':''),attrs:base+` data-cid="${c.cid}"`,ctr:c.ctr,dmg:c.dmg,lnk:(c.links||[]).length,mod:c.mod,st:c.st});
@@ -117,7 +119,7 @@ function plate(sel,P,p){
   const st=S.state, turn=st&&st.turn===P.uid;
   el.innerHTML=`<span class="dot ${P.online?'on':''}" style="width:10px;height:10px;border-radius:50%;display:inline-block"></span><b>${esc(P.name)}</b>${P.uid===ACT?'<span class="mut">(คุณควบคุม)</span>':''}${p&&p.geass?`<span class="gchip" style="--gc:${GHEX[p.geass.color]}" title="กีอัสสี${GTH[p.geass.color]}">กีอัส ${GTH[p.geass.color]}</span>`:''}
    ${turn?'<span class="turnmark">กำลังเล่น</span>':''}
-   ${p?`<span class="mut mono" style="font-size:.8rem">HP ${p.z.hp.length} · Deck ${p.z.deck} · มือ ${p.z.hand.length} · Code ${p.code}</span>`:''}`;
+   ${p?`<span class="mut mono" style="font-size:.8rem">Firewall ${p.z.hp.length} · Deck ${p.z.deck} · มือ ${p.z.hand.length} · Code ${p.code}</span>`:''}`;
 }
 /* ---------------- Side panel ---------------- */
 function panel(){
@@ -148,6 +150,25 @@ function uiConfirm({title='ยืนยัน',html='',ok='ยืนยัน',c
     document.body.appendChild(el); el.querySelector('.btn.pri').focus();
   });
 }
+function uiNumber({title='จำนวน',label='',max=99,ok='ตกลง',def:dv=1}){
+  max=Math.max(0,+max||0);
+  if(!max) return Promise.resolve(toast('ไม่มีการ์ดในกองเด็คแล้ว','err')||null);
+  return new Promise(res=>{
+    $('#cfm')?.remove();
+    const el=document.createElement('div'); el.id='cfm'; el.className='cfm';
+    el.innerHTML=`<div class="cfm-box" role="dialog" aria-modal="true"><h3>${esc(title)}</h3><div class="cfm-body"><p style="margin:0">${esc(label)}</p>
+      <div class="cfm-num"><button type="button" class="btn sm" data-d="-1" aria-label="ลด">−</button><input type="number" id="cfmN" min="1" max="${max}" value="${Math.min(dv,max)}" inputmode="numeric"><button type="button" class="btn sm" data-d="1" aria-label="เพิ่ม">+</button></div>
+      <div class="mut" style="font-size:.85rem;text-align:center">มีการ์ดในกอง ${max} ใบ · <button type="button" class="btn sm" data-all="1">ทั้งหมด</button></div></div>
+      <div class="cfm-btns"><button class="btn" data-r="0" type="button">ยกเลิก</button><button class="btn pri" data-r="1" type="button">${esc(ok)}</button></div></div>`;
+    const inp=()=>$('#cfmN',el), val=()=>Math.max(1,Math.min(max,parseInt(inp().value,10)||1));
+    const done=v=>{document.removeEventListener('keydown',kd,true); el.remove(); res(v);};
+    const kd=e=>{ if(e.key==='Escape'){e.preventDefault();e.stopPropagation();done(null);} else if(e.key==='Enter'){e.preventDefault();e.stopPropagation();done(val());} };
+    el.addEventListener('click',e=>{
+      const b=e.target.closest('button'); if(b){ if(b.dataset.d) inp().value=Math.max(1,Math.min(max,val()+ +b.dataset.d)); else if(b.dataset.all) inp().value=max; else if(b.dataset.r) done(b.dataset.r==='1'?val():null); return; }
+      if(e.target===el) done(null); });
+    document.addEventListener('keydown',kd,true); document.body.appendChild(el); inp().focus(); inp().select();
+  });
+}
 function copyLink(){
   const url=shareUrl();
   const done=()=>toast('คัดลอกลิงก์ห้องแล้ว ส่งให้เพื่อนได้เลย','ok');
@@ -171,7 +192,7 @@ function setupHTML(mp,op,opp,st){
    ${row(su.placed,'2. วาง Partners 4 ใบลง Partners Zone แล้วสับเด็ค',su.placed?'':B('place','วาง',false))}
    ${row(su.drew,'3. จั่ว 4 ใบขึ้นมือ',su.drew?'':B('setup_draw','จั่ว',!su.placed))}
    ${row(su.mull,'   เปลี่ยนมือได้ 1 ครั้ง',su.mull||su.hp?'':B('mull','เปลี่ยน',!su.drew))}
-   ${row(su.hp,'4. วางการ์ด 8 ใบลง HP (คว่ำ)',su.hp?'':B('setup_hp','วาง HP',!su.drew))}
+   ${row(su.hp,'4. วางการ์ด 8 ใบลง Firewall Zone (คว่ำ)',su.hp?'':B('setup_hp','วาง Firewall Zone',!su.drew))}
    ${row(su.ready,'5. พร้อมเริ่มเกม',su.ready?'':B('ready','พร้อม',!(su.placed&&su.drew&&su.hp&&st.first)))}
   </div><p class="mut" style="font-size:.85rem;margin:0">คู่ต่อสู้: ${op.setup.ready?'พร้อมแล้ว':'กำลังเตรียม…'}</p>`;
 }
@@ -229,21 +250,24 @@ function combatHTML(st,opp){
   const prot=op.z.protect, atkz=op.z.attack;
   const rows=prot.map(t=>row(t,'Protect')).join('')+atkz.map(t=>row(t,'Attack')).join('');
   const dmg=Math.max(1,ae.crit);
+  const fwName=`Firewall Zone ของ ${esc(opp.name)}`;
   const player=prot.length
-    ? `<div class="tg"><span class="nm">ผู้เล่น ${esc(opp.name)}</span><b>HP ${op.z.hp.length}</b><button class="btn sm" disabled>โจมตีผู้เล่น</button>
-        <div class="calc"><span class="mut">ต้องทำให้ Protect Zone ของฝั่งตรงข้ามว่างก่อน</span></div></div>`
-    : `<div class="tg"><span class="nm">ผู้เล่น ${esc(opp.name)}</span><b>HP ${op.z.hp.length}</b>
-        <button class="btn sm pri" data-do="atk" data-t="player" ${spent?'disabled':''}>โจมตีผู้เล่นโดยตรง</button>
-        <div class="calc"><span class="ok">Protect Zone ว่าง → CRIT ${ae.crit} ลด HP −${dmg}</span></div></div>`;
+    ? `<div class="tg"><span class="nm">${fwName}</span><b>Firewall ${op.z.hp.length} ใบ</b>
+        <button class="btn sm" disabled title="ต้องทำให้ Protect Zone ว่างก่อน">โจมตีปกติ</button>
+        <button class="btn sm pri" data-do="atk_force" ${spent?'disabled':''}>โจมตี Firewall Zone โดยตรง (ข้าม Protect Zone)</button>
+        <div class="calc"><span class="ok">ไม่สนการ์ดใน Protect Zone → CRIT ${ae.crit} ลด Firewall −${dmg} ใบ</span></div></div>`
+    : `<div class="tg"><span class="nm">${fwName}</span><b>Firewall ${op.z.hp.length} ใบ</b>
+        <button class="btn sm pri" data-do="atk" data-t="player" ${spent?'disabled':''}>โจมตี Firewall Zone โดยตรง</button>
+        <div class="calc"><span class="ok">Protect Zone ว่าง → CRIT ${ae.crit} ลด Firewall −${dmg} ใบ</span></div></div>`;
   const chips=field.map(([c,zl])=>{const d=cinfo(c); return `<button class="chip ${c.iid===atkSel?'on':''} ${used.has(c.iid)?'used':''}" data-do="selatk" data-i="${c.iid}">${esc(d.name)} <b>ATK ${eff(c).atk}</b> <small>${zl==='A'?'Attack':'Protect'}</small>${used.has(c.iid)?' ✓':''}</button>`}).join('');
   return `<div class="combat"><b>ศึก (Combat)</b>
-    <div class="mut" style="font-size:.8rem;margin:2px 0 6px">1) เลือกผู้โจมตี (Neurous ใบไหนก็ได้บนสนามเรา) — หรือคลิกการ์ดบนสนามเลย<br>2) เลือกเป้าหมาย: การ์ดใบไหนก็ได้บนสนามฝั่งตรงข้าม หรือผู้เล่นเมื่อ Protect Zone ว่าง (คลิกการ์ดที่กรอบแดงบนสนามเพื่อโจมตี)</div>
+    <div class="mut" style="font-size:.8rem;margin:2px 0 6px">1) เลือกผู้โจมตี (Neurous ใบไหนก็ได้บนสนามเรา) — หรือคลิกการ์ดบนสนามเลย<br>2) เลือกเป้าหมาย: การ์ดใบไหนก็ได้บนสนามฝั่งตรงข้าม หรือ Firewall Zone เมื่อ Protect Zone ว่าง (หรือกดปุ่มโจมตี Firewall Zone โดยตรงเพื่อข้าม Protect Zone)</div>
     <div class="chips">${chips}</div>
     <div class="btns">${protBtn(st)}</div>
     <div class="row" style="gap:6px;margin:8px 0;font-size:.85rem">ATK <b>${ae.atk}</b>${(A.links||[]).length?` <small class="mut">(รวม Link ${(A.links||[]).length})</small>`:''} + <input type="number" id="bA" value="${bonusA}" style="width:58px;padding:2px 6px"> เอฟเฟค · DEF เป้าหมาย + <input type="number" id="bD" value="${bonusD}" style="width:58px;padding:2px 6px"></div>
     ${spent?'<div class="mut" style="font-size:.85rem">ใบนี้โจมตีไปแล้วในเฟสนี้ — เลือกใบอื่น</div>':''}
     <div class="tgs">${rows}${player}</div>
-    <div class="mut" style="font-size:.76rem;margin-top:6px">แบบ Hearthstone: ดาเมจ = ATK ของผู้โจมตี ลด DEF ของเป้าหมายแบบสะสม${S.rules&&S.rules.counter?' เป้าหมายสวนกลับด้วย ATK ของตัวเอง':''} · DEF เหลือ 0 = ถูกทำลาย ลง Delect · โจมตีตรง = ลด HP เท่าค่า CRIT (อย่างน้อย 1)</div></div>`;
+    <div class="mut" style="font-size:.76rem;margin-top:6px">แบบ Hearthstone: ดาเมจ = ATK ของผู้โจมตี ลด DEF ของเป้าหมายแบบสะสม${S.rules&&S.rules.counter?' เป้าหมายสวนกลับด้วย ATK ของตัวเอง':''} · DEF เหลือ 0 = ถูกทำลาย ลง Delect · โจมตี Firewall Zone ตรง = การ์ดบนสุดขึ้นมือเท่าค่า CRIT (อย่างน้อย 1)</div></div>`;
 }
 function markCombat(){
   $$('.sel,.tgt').forEach(e=>e.classList.remove('sel','tgt'));
@@ -253,17 +277,18 @@ function markCombat(){
   $$('.half.opp .z-protect .card, .half.opp .z-attack .card').forEach(e=>e.classList.add('tgt'));
   if(!op.z.protect.length){const z=$('.half.opp .z-hp'); if(z) z.classList.add('tgt');}
 }
-function boardAttack(target){
-  const st=S.state, {opp}=sides(), op=pst(opp);
+function boardAttack(target,opts={}){
+  const st=S.state, {opp}=sides(), op=pst(opp), force=!!opts.force;
   const f=myField(st).find(([c])=>c.iid===atkSel); if(!f) return toast('เลือกผู้โจมตีก่อน','err');
   const [A]=f, a=cinfo(A), ae=eff(A);
   if(st.attacked&&st.attacked.includes(A.iid)) return toast('ใบนี้โจมตีไปแล้วในเฟสนี้ เลือกใบอื่น','err');
   const side=(cls,lab,name,val)=>`<div class="cfm-side ${cls}"><small>${lab}</small><b>${esc(name)}</b><span>${val}</span></div>`;
   let html;
   if(target==='player'){
-    const dmg=Math.max(1,ae.crit);
-    html=`<div class="cfm-vs">${side('me','ผู้โจมตี',a.name,'ATK '+ae.atk)}<div class="cfm-arrow">⚔</div>${side('foe','เป้าหมาย','ผู้เล่น '+opp.name,'HP '+op.z.hp.length)}</div>
-      <div class="cfm-res ok">โจมตีโดยตรง · HP −${dmg} (การ์ด HP ${dmg} ใบขึ้นมือฝั่งตรงข้าม)</div>`;
+    const dmg=Math.max(1,ae.crit), skip=force&&op.z.protect.length;
+    html=`<div class="cfm-vs">${side('me','ผู้โจมตี',a.name,'ATK '+ae.atk)}<div class="cfm-arrow">⚔</div>${side('foe','เป้าหมาย','Firewall Zone ของ '+opp.name,'Firewall '+op.z.hp.length)}</div>
+      <div class="cfm-res ok">โจมตี Firewall Zone โดยตรง · Firewall −${dmg} (การ์ดบนสุด ${dmg} ใบขึ้นมือฝั่งตรงข้าม)</div>
+      ${skip?`<div class="cfm-res no">ข้าม Protect Zone (ฝั่งตรงข้ามมี ${op.z.protect.length} ใบ)</div>`:''}`;
   }else{
     const T=[...op.z.protect,...op.z.attack].find(c=>c.iid===target), d=cinfo(T);
     if(d){const k=calcHit(A,T);
@@ -272,7 +297,7 @@ function boardAttack(target){
         ${k.counter?`<div class="cfm-res ${k.aDie?'bad':'mut'}">สวนกลับ ${k.back} → ${k.aDie?'ผู้โจมตีถูกทำลาย':'ผู้โจมตีเหลือ DEF '+k.aAfter}</div>`:''}`;
     }else html=`<div class="cfm-vs">${side('me','ผู้โจมตี',a.name,'ATK '+ae.atk)}<div class="cfm-arrow">⚔</div>${side('foe','เป้าหมาย','การ์ดคว่ำ','?')}</div>`;
   }
-  uiConfirm({title:'ยืนยันการโจมตี',html,ok:'โจมตี'}).then(y=>{ if(y) act('attack',{iid:atkSel,target,atk_bonus:bonusA,def_bonus:bonusD}); });
+  uiConfirm({title:force?'โจมตี Firewall Zone โดยตรง':'ยืนยันการโจมตี',html,ok:'โจมตี',tone:force?'danger':''}).then(y=>{ if(y) act('attack',{iid:atkSel,target,atk_bonus:bonusA,def_bonus:bonusD,...(force?{ignore_protect:true}:{})}); });
 }
 function protBtn(st){const on=st.p[ACT].protect_atk!==false;
   return `<button class="btn sm ${on?'on':''}" data-do="protatk" title="เปิด/ปิด ให้ Neurous ใน Protect Zone ของเราโจมตีได้">Protect โจมตี${on?'ได้':'ไม่ได้'}</button>`;}
@@ -280,7 +305,7 @@ function toolsHTML(st){
   const play=st.phase!=='setup', mine=st.turn===ACT;
   return `<hr style="border:0;border-top:2px solid #6b6d72;margin:12px 0"><h3>เครื่องมือ Manual</h3>
    <div class="btns"><button class="btn sm" data-do="draw" data-n="1">จั่ว 1</button><button class="btn sm" data-do="shuffle">สับเด็ค</button>
-   <button class="btn sm" data-do="peek" data-n="0">ค้นเด็ค</button><button class="btn sm" data-do="hp_hit" ${play?'':'disabled'}>HP −1</button></div>
+   <button class="btn sm" data-do="peek" data-n="0">ค้นเด็ค</button><button class="btn sm" data-do="hp_hit" ${play?'':'disabled'}>Firewall −1</button></div>
    <div class="btns">${protBtn(st)}</div>
    <label class="row" style="font-size:.88rem;gap:6px">Playmat <select id="matSel" style="max-width:190px">${MATS.map(o=>`<option value="${o.key}" ${o.key===curMatKey()?'selected':''}>${esc(o.name)}</option>`).join('')}</select></label>
    ${extrasHTML(true)}
@@ -295,6 +320,7 @@ document.addEventListener('click',e=>{
   if(['place','setup_draw','mulligan','setup_hp','ready','shuffle','end_turn','add_combat','undo_act','hp_hit'].includes(k)) act(k);
   else if(k==='first') act('first',{who:b.dataset.who});
   else if(k==='mull'){mullDismissed=false; overlays();}
+  else if(k==='atk_force') boardAttack('player',{force:true});
   else if(k==='lobby_next'){lobbyDone=true; act('lobby_ready',{on:true}); overlays();}
   else if(k==='lobby_copy') copyLink();
   else if(k==='win_again') act('reset');
@@ -346,7 +372,7 @@ function cardMenu(e,iid,zn){
   const inst=findInst(iid);
   const cid=inst?inst.cid:((document.querySelector(`.card[data-iid="${iid}"]`)||{dataset:{}}).dataset.cid);
   const cd=cid&&S.cards[cid];
-  const D=[['hand','ขึ้นมือ'],['attack','Attack Zone'],['protect','Protect Zone'],['partners','Partners Zone'],['server','Server Zone'],['aura','Aura Zone'],['delect','Delect Zone'],['hp','HP (คว่ำ)']];
+  const D=[['hand','ขึ้นมือ'],['attack','Attack Zone'],['protect','Protect Zone'],['partners','Partners Zone'],['server','Server Zone'],['aura','Aura Zone'],['delect','Delect Zone'],['hp','Firewall Zone (คว่ำ)']];
   let h=cd?`<button data-m="zoom">🔍 ดูการ์ดขยาย</button>`:'';
   if(['attack','protect','partners','server','aura'].includes(zn))
     h+=`<button data-m="tap">หมุน / ตั้งการ์ด (Tap)</button><button data-m="flip">พลิกหน้า / คว่ำ</button>`;
@@ -359,7 +385,7 @@ function cardMenu(e,iid,zn){
         <button data-keep="1" data-m="modclear">ล้างบัพทั้งหมด</button>`;
   if(zn==='hand') h+=`<button data-m="flip">เปิดเผย / ซ่อนจากฝ่ายตรงข้าม</button>`;
   if(cd&&cd.type==='ship'&&['hand','server','partners','attack','protect'].includes(zn)&&S.state){
-    const tg=myField(S.state);
+    const tg=neuTargets().map(t=>[t]);
     h+=`<h4>Link กับ Neurous (ฟรี · ได้ไม่เกิน ${LINK_MAX} ใบต่อ Neurous)</h4>`+(tg.length?tg.map(([t])=>{const n=(t.links||[]).length;
       return `<button data-m="link" data-t="${t.iid}" ${n>=LINK_MAX?'disabled':''}>${esc(cinfo(t).name)} (${n}/${LINK_MAX})</button>`}).join(''):'<div class="mut" style="padding:2px 10px;font-size:.85rem">ยังไม่มี Neurous บนสนาม</div>');
   }
@@ -382,20 +408,28 @@ function cardMenu(e,iid,zn){
     closeModal();
   });
 }
+const neuTargets=()=>{const z=S.state.p[ACT].z; return [...z.attack,...z.protect].filter(c=>{const d=cinfo(c); return d&&NEU.includes(d.type);});};
+function foreignShipMenu(e,el){      // Ship ของอีกฝ่าย → Link กับ Neurous บนสนามเรา
+  const iid=+el.dataset.iid, tg=neuTargets();
+  showCtx(e.clientX,e.clientY,`<h4>Link Ship ของอีกฝ่ายกับ Neurous ของเรา (ฟรี · ไม่เกิน ${LINK_MAX} ใบต่อ Neurous)</h4>`+(tg.length?tg.map(t=>{const n=(t.links||[]).length; return `<button data-t="${t.iid}" ${n>=LINK_MAX?'disabled':''}>${esc(cinfo(t).name)} (${n}/${LINK_MAX})</button>`;}).join(''):'<div class="mut" style="padding:2px 10px;font-size:.85rem">ยังไม่มี Neurous บนสนามของเรา</div>'),
+    b=>{ if(b.dataset.t) act('link',{iid,target:+b.dataset.t}); });
+}
 function stackMenu(e,stk){
   const zn=stk.dataset.stack, side=stk.dataset.side, mine=side==='me'&&seated, st=S.state;
   const {me,opp}=sides(), P=side==='me'?me:opp, p=pst(P);
   if(combatOn&&side==='opp'&&zn==='hp'){
-    if(p.z.protect&&pst(sides().opp).z.protect.length) return toast('ต้องทำให้ Protect Zone ของฝั่งตรงข้ามว่างก่อน','err');
+    if(pst(sides().opp).z.protect.length) return toast('Protect Zone ยังไม่ว่าง — กดปุ่ม "โจมตี Firewall Zone โดยตรง (ข้าม Protect Zone)" ในแผง Combat','err');
     return boardAttack('player');
   }
   if(zn==='delect') return openList(`Delect Zone ของ ${P.name}`,p.z.delect.slice().reverse(),'delect',side);
   if(!mine) return toast('ข้อมูลนี้ถูกซ่อนไว้');
-  if(zn==='hp') return showCtx(e.clientX,e.clientY,`<button data-k="view">ดูการ์ดใน HP</button><button data-k="hit">HP −1 (การ์ด HP ขึ้นมือ)</button>`,
-    b=>b.dataset.k==='view'?openList('Firewall Zone (HP) ของคุณ',p.z.hp,'hp','me'):act('hp_hit'));
+  if(zn==='hp') return showCtx(e.clientX,e.clientY,`<button data-k="view">ดูการ์ดใน Firewall Zone</button><button data-k="hit">Firewall −1 (การ์ดบนสุดขึ้นมือ)</button>
+    <button data-k="tohp">วางการ์ดบนสุดของกองลง Firewall Zone…</button>`,
+    b=>b.dataset.k==='view'?openList('Firewall Zone ของคุณ',p.z.hp,'hp','me'):b.dataset.k==='tohp'?uiNumber({title:'วางการ์ดลง Firewall Zone',label:'วางการ์ดบนสุดของกองเด็คลง Firewall Zone (คว่ำ) กี่ใบ?',max:p.z.deck,ok:'วางการ์ด'}).then(n=>n&&act('to_hp',{n})):act('hp_hit'));
   showCtx(e.clientX,e.clientY,`<button data-k="d1">จั่ว 1 ใบ</button><button data-k="d2">จั่ว 2 ใบ</button><button data-k="sh">สับเด็ค</button>
-    <button data-k="p3">ดูบนสุด 3 ใบ</button><button data-k="p5">ดูบนสุด 5 ใบ</button><button data-k="all">ค้นทั้งเด็ค</button>`,
-    b=>({d1:()=>act('draw',{n:1}),d2:()=>act('draw',{n:2}),sh:()=>act('shuffle'),p3:()=>act('peek',{n:3}),p5:()=>act('peek',{n:5}),all:()=>act('peek',{n:0})})[b.dataset.k]());
+    <button data-k="p3">ดูบนสุด 3 ใบ</button><button data-k="p5">ดูบนสุด 5 ใบ</button><button data-k="all">ค้นทั้งเด็ค</button>
+    <button data-k="mill">ทิ้งการ์ดบนสุดของกอง…</button>`,
+    b=>({mill:()=>uiNumber({title:'ทิ้งการ์ดบนสุดของกอง',label:'ทิ้งการ์ดบนสุดของกองเด็คลง Delect Zone กี่ใบ?',max:p.z.deck,ok:'ทิ้งการ์ด'}).then(n=>n&&act('mill',{n})),d1:()=>act('draw',{n:1}),d2:()=>act('draw',{n:2}),sh:()=>act('shuffle'),p3:()=>act('peek',{n:3}),p5:()=>act('peek',{n:5}),all:()=>act('peek',{n:0})})[b.dataset.k]());
 }
 function openList(title,items,zone,side='me'){
   $('#mtitle').textContent=`${title} (${items.length})`;
@@ -413,6 +447,7 @@ document.addEventListener('click',e=>{
   const el=e.target.closest('.card[data-iid]'); if(!el) return;
   inspect(el);
   if(statusMode&&FIELD.includes(el.dataset.zone)){act('status',{iid:+el.dataset.iid,name:statusMode,on:true}); statusMode=null; $$('[data-token]').forEach(x=>x.classList.remove('on')); return;}
+  if(el.dataset.side==='opp'&&seated&&FOREIGN_LINK_Z.includes(el.dataset.zone)&&(S.cards[el.dataset.cid]||{}).type==='ship'&&el.dataset.cid){foreignShipMenu(e,el);return;}
   if(combatOn&&el.dataset.side==='opp'&&(el.dataset.zone==='attack'||el.dataset.zone==='protect')){boardAttack(+el.dataset.iid);return;}
   if(el.dataset.side!=='me'||!seated) return;
   const iid=+el.dataset.iid, zn=el.dataset.zone;
@@ -490,7 +525,7 @@ const mineZone=z=>z&&seated&&(z.id==='hand'||z.closest('.half.me')||z.dataset.si
 document.addEventListener('dragstart',e=>{
   const tk=e.target.closest('[data-token]'); if(tk){dragToken=tk.dataset.token; e.dataTransfer.setData('text/plain','token:'+dragToken); e.dataTransfer.effectAllowed='copy'; return;}
   const c=e.target.closest('.card[draggable="true"]'); if(!c) return;
-  dragIid=+c.dataset.iid; dragCid=c.dataset.cid; dragZone=c.dataset.zone; e.dataTransfer.setData('text/plain',String(dragIid)); e.dataTransfer.effectAllowed='move';});
+  dragIid=+c.dataset.iid; dragCid=c.dataset.cid; dragZone=c.dataset.zone; dragForeign=c.dataset.side==='opp'; e.dataTransfer.setData('text/plain',String(dragIid)); e.dataTransfer.effectAllowed='move';});
 document.addEventListener('dragover',e=>{
   if(dragToken){const tc=e.target.closest('.card[data-iid]'); if(tc&&FIELD.includes(tc.dataset.zone)){e.preventDefault(); tc.classList.add('over');} return;}
   const z=e.target.closest('.zone,#hand'); if(mineZone(z)){e.preventDefault();z.classList.add('over');}});
@@ -502,10 +537,11 @@ document.addEventListener('drop',e=>{
   if(tc&&seated&&tc.dataset.side==='me'&&['attack','protect'].includes(tc.dataset.zone)&&dragIid!=null&&+tc.dataset.iid!==dragIid
      &&S.cards[dragCid]&&S.cards[dragCid].type==='ship'&&dragZone!=='aura'){
     e.preventDefault(); $$('.over').forEach(x=>x.classList.remove('over'));
-    act('link',{iid:dragIid,target:+tc.dataset.iid}); dragIid=null; return;
+    act('link',{iid:dragIid,target:+tc.dataset.iid}); dragIid=null; dragForeign=false; return;
   }
   const z=e.target.closest('.zone,#hand'); if(!mineZone(z)) return; e.preventDefault();
   $$('.over').forEach(x=>x.classList.remove('over'));
+  if(dragForeign){toast('Ship ของอีกฝ่ายลากไปวางบน Neurous ของเราเพื่อ Link ได้เท่านั้น','err'); dragIid=null; dragForeign=false; return;}
   if(dragIid!=null) act('move',{iid:dragIid,to:z.dataset.zone,pay:autoPay}); dragIid=null;
 });
 document.addEventListener('dragend',()=>{dragToken=null; $$('.over').forEach(x=>x.classList.remove('over'));});

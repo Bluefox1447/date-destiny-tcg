@@ -693,3 +693,8 @@ body.fs.drawer-open .drawertab{left:360px}
 /* เพลงในห้องเล่น */
 .sndhint{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:99;background:rgba(0,0,0,.84);color:#fff;border:2px solid var(--sig);border-radius:999px;padding:9px 20px;font-size:.95rem;pointer-events:none;animation:cfin .3s}
 .sndrow{display:flex;gap:8px;align-items:center}.sndvol{flex:1;min-width:70px;accent-color:var(--sig)}.sndtitle{font-size:.82rem;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* กล่องกรอกจำนวน */
+.cfm-num{display:flex;gap:10px;justify-content:center;align-items:center}
+.cfm-num input{width:96px;text-align:center;font:700 1.8rem var(--mono);padding:8px 6px}
+.cfm-num .btn{width:44px;height:44px;justify-content:center;font-size:1.3rem}
