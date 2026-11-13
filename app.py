@@ -2,10 +2,10 @@ import os, io, sys, json, random, string, smtplib, base64, uuid, re, secrets, ti
 from datetime import datetime, timedelta
 from email.message import EmailMessage
 from functools import wraps
-
+ 
 from dotenv import load_dotenv
 load_dotenv()
-
+ 
 from flask import (Flask, render_template, request, redirect, url_for, flash,
                    jsonify, abort, session, send_from_directory, send_file)
 from flask_login import (LoginManager, login_user, logout_user, login_required, current_user)
@@ -13,14 +13,14 @@ from flask_socketio import SocketIO, emit, join_room
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
 from authlib.integrations.flask_client import OAuth
-
+ 
 from models import db, User, Card, Deck, News, Sleeve, Upload, Track, Playmat
 import game
-
+ 
 BASE = os.path.dirname(os.path.abspath(__file__))
 app = Flask(__name__)
-
-
+ 
+ 
 def _secret_key():
     """ใช้ SECRET_KEY จาก .env ถ้าไม่ตั้งไว้จะสร้างให้และเก็บถาวรใน instance/secret_key"""
     k = os.getenv('SECRET_KEY')
@@ -33,8 +33,8 @@ def _secret_key():
     k = secrets.token_hex(32)
     open(path, 'w').write(k)
     return k
-
-
+ 
+ 
 _db_url = os.getenv('DATABASE_URL', 'sqlite:///dds.db')
 for _pre in ('postgres://', 'postgresql://'):          # Render/Heroku ให้ URL แบบไม่ระบุไดรเวอร์
     if _db_url.startswith(_pre):                       # บังคับใช้ psycopg2 (SQLAlchemy 2.1 เปลี่ยนค่าเริ่มต้นเป็น psycopg3)
@@ -60,7 +60,7 @@ login_manager.login_message = 'กรุณาเข้าสู่ระบบ�
 _cors = os.getenv('CORS_ORIGINS', '*')
 sio = SocketIO(app, async_mode='threading',
                cors_allowed_origins='*' if _cors == '*' else [o.strip() for o in _cors.split(',') if o.strip()])
-
+ 
 DECK_SIZE = int(os.getenv('DECK_SIZE', 50))
 MAX_COPIES = int(os.getenv('MAX_COPIES', 4))
 ADMIN_EMAILS = {e.strip().lower() for e in os.getenv('ADMIN_EMAILS', '').split(',') if e.strip()}
@@ -68,7 +68,7 @@ COLORS = [('red', 'แดง'), ('blue', 'น้ำเงิน'), ('green', '�
           ('purple', 'ม่วง'), ('black', 'ดำ'), ('none', 'ไร้สี')]
 TYPES = [('entity', 'Entity (Neurous)'), ('partners', 'Partners'), ('ship', 'Ship'), ('server', 'Server')]
 NEUROUS = ('entity', 'partners')      # ประเภทที่วางใน Partners Zone / ลง Attack-Protect ได้
-
+ 
 # ---------------------------------------------------------------- OAuth
 oauth = OAuth(app)
 if os.getenv('GOOGLE_CLIENT_ID'):
@@ -83,19 +83,19 @@ if os.getenv('DISCORD_CLIENT_ID'):
                    authorize_url='https://discord.com/oauth2/authorize',
                    api_base_url='https://discord.com/api/',
                    client_kwargs={'scope': 'identify email'})
-
-
+ 
+ 
 @login_manager.user_loader
 def load_user(uid):
     return db.session.get(User, int(uid))
-
-
+ 
+ 
 @app.context_processor
 def inject():
     return dict(COLORS=COLORS, TYPES=TYPES, DECK_SIZE=DECK_SIZE, MAX_COPIES=MAX_COPIES,
                 social=[p for p in ('google', 'discord') if oauth.create_client(p)])
-
-
+ 
+ 
 def admin_required(f):
     @wraps(f)
     def w(*a, **k):
@@ -105,23 +105,60 @@ def admin_required(f):
             abort(403)
         return f(*a, **k)
     return w
-
-
+ 
+ 
 def to_int(v, d=0, lo=-999, hi=999):
     try:
         return max(lo, min(hi, int(v)))
     except (TypeError, ValueError):
         return d
-
-
+ 
+ 
 UPLOAD_ROOT = os.getenv('UPLOAD_DIR') or os.path.join(BASE, 'static', 'uploads')
 UPLOAD_URL = '/uploads' if os.getenv('UPLOAD_DIR') else '/static/uploads'
 UPLOADS_IN_DB = os.getenv('UPLOADS_IN_DB') == '1' or (ON_RENDER and not os.getenv('UPLOAD_DIR'))
 MIMES = {'.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif',
          '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg', '.wav': 'audio/wav', '.m4a': 'audio/mp4'}
 AUDIO_EXT = ('.mp3', '.ogg', '.wav', '.m4a')
-
-
+ 
+# ---------------------------------------------------------------- Supabase Storage
+SB_URL = (os.getenv('SUPABASE_URL') or '').rstrip('/')
+SB_KEY = os.getenv('SUPABASE_SERVICE_KEY') or ''
+SB_BUCKET = os.getenv('SUPABASE_BUCKET', 'uploads')
+USE_SB = bool(SB_URL and SB_KEY)
+ 
+ 
+def sb_upload(data, sub, ext):
+    """อัปโหลดไฟล์ขึ้น Supabase Storage คืน public URL หรือ None ถ้าล้มเหลว"""
+    import requests
+    path = f'{sub}/{uuid.uuid4().hex}{ext}'
+    try:
+        r = requests.post(f'{SB_URL}/storage/v1/object/{SB_BUCKET}/{path}', data=data, timeout=60,
+                          headers={'Authorization': f'Bearer {SB_KEY}', 'apikey': SB_KEY,
+                                   'Content-Type': MIMES.get(ext, 'application/octet-stream'),
+                                   'Cache-Control': 'max-age=31536000'})
+        if r.status_code >= 300:
+            app.logger.error('supabase upload %s %s', r.status_code, r.text[:200])
+            return None
+        return f'{SB_URL}/storage/v1/object/public/{SB_BUCKET}/{path}'
+    except Exception as e:
+        app.logger.error('supabase upload error: %s', e)
+        return None
+ 
+ 
+def sb_delete(url):
+    """ลบไฟล์ใน Storage จาก public URL (ไม่ทำอะไรถ้าไม่ใช่ไฟล์ของเรา)"""
+    prefix = f'{SB_URL}/storage/v1/object/public/{SB_BUCKET}/'
+    if not (USE_SB and url and url.startswith(prefix)):
+        return
+    import requests
+    try:
+        requests.delete(f'{SB_URL}/storage/v1/object/{SB_BUCKET}/{url[len(prefix):]}', timeout=15,
+                        headers={'Authorization': f'Bearer {SB_KEY}', 'apikey': SB_KEY})
+    except Exception as e:
+        app.logger.error('supabase delete error: %s', e)
+ 
+ 
 @app.get('/media/<name>')
 def media(name):
     try:
@@ -133,18 +170,18 @@ def media(name):
     # send_file รองรับ Range request (เลื่อนเพลงได้) และแคชนาน
     return send_file(io.BytesIO(up.data), mimetype=up.mime, conditional=True, etag=f'u{up.id}',
                      last_modified=up.created, max_age=31536000)
-
-
+ 
+ 
 @app.get('/uploads/<path:p>')
 def uploads(p):
     return send_from_directory(UPLOAD_ROOT, p)
-
-
+ 
+ 
 @app.get('/healthz')
 def healthz():
     return 'ok'
-
-
+ 
+ 
 @app.errorhandler(Exception)
 def on_error(e):
     """บันทึก error ลง log เสมอ ถ้าตั้ง SHOW_ERRORS=1 จะแสดงสาเหตุบนหน้าเว็บ (ใช้ชั่วคราวตอนไล่ปัญหา)"""
@@ -157,8 +194,8 @@ def on_error(e):
         text = re.sub(r'://[^@\s]+@', '://***@', text)[:4000]
         return app.response_class(text, status=500, mimetype='text/plain; charset=utf-8')
     return InternalServerError()
-
-
+ 
+ 
 @app.get('/readyz')
 def readyz():
     """ตรวจว่าเชื่อมต่อฐานข้อมูลและมีตารางครบหรือไม่ (ใช้วินิจฉัยตอน deploy)"""
@@ -174,14 +211,19 @@ def readyz():
     except Exception as e:
         detail = re.sub(r'://[^@\s]+@', '://***@', str(e))[:300]
         return jsonify(ok=False, error=type(e).__name__, detail=detail, **info), 503
-
-
+ 
+ 
 def save_upload(file, sub):
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in ('.png', '.jpg', '.jpeg', '.webp', '.gif'):
         return None
     if (file.content_length or 0) > 6 * 1024 * 1024:
         return None
+    if USE_SB:                                   # เก็บใน Supabase Storage
+        data = file.read()
+        if not data or len(data) > 6 * 1024 * 1024:
+            return None
+        return sb_upload(data, sub, ext)
     if UPLOADS_IN_DB:
         up = Upload(mime=MIMES[ext], data=file.read())
         db.session.add(up)
@@ -192,11 +234,11 @@ def save_upload(file, sub):
     os.makedirs(folder, exist_ok=True)
     file.save(os.path.join(folder, name))
     return f'{UPLOAD_URL}/{sub}/{name}'
-
-
+ 
+ 
 USERNAME_RE = re.compile(r'^[A-Za-z0-9ก-๙_.\-]{3,24}$')
-
-
+ 
+ 
 def username_error(name, exclude_id=None):
     """ตรวจชื่อผู้ใช้: 3–24 ตัว ใช้ ก-ฮ a-z 0-9 _ . - และห้ามซ้ำ (ไม่สนตัวพิมพ์ใหญ่เล็ก)"""
     if not USERNAME_RE.match(name or ''):
@@ -205,8 +247,8 @@ def username_error(name, exclude_id=None):
     if exclude_id:
         q = q.filter(User.id != exclude_id)
     return 'ชื่อผู้ใช้นี้ถูกใช้แล้ว' if q.first() else None
-
-
+ 
+ 
 def uniq_username(base):
     base = re.sub(r'[^A-Za-z0-9ก-๙_.\-]', '', base or '')[:20] or 'player'
     base = base + '_' * max(0, 3 - len(base))
@@ -215,11 +257,11 @@ def uniq_username(base):
         i += 1
         name = f'{base}{i}'
     return name
-
-
+ 
+ 
 _hits = {}
-
-
+ 
+ 
 def rate_limited(key, limit, window):
     """จำกัดจำนวนครั้งต่อช่วงเวลา (เก็บในหน่วยความจำ ใช้ได้เพราะรัน worker เดียว) คืน True ถ้าเกินโควตา"""
     now = time.time()
@@ -233,14 +275,14 @@ def rate_limited(key, limit, window):
         for k in [k for k, v in _hits.items() if not v or now - v[-1] > 3600]:
             _hits.pop(k, None)
     return False
-
-
+ 
+ 
 def claim_token():
     """ADMIN_CLAIM_TOKEN ใช้ได้เมื่อยาวอย่างน้อย 16 ตัวอักษร (กันตั้งค่าอ่อนอย่าง '1')"""
     t = os.getenv('ADMIN_CLAIM_TOKEN', '')
     return t if len(t) >= 16 else ''
-
-
+ 
+ 
 def save_audio(file):
     """บันทึกไฟล์เพลง (mp3/ogg/wav/m4a ไม่เกิน 15MB) คืน URL หรือ None"""
     ext = os.path.splitext(file.filename)[1].lower()
@@ -249,6 +291,8 @@ def save_audio(file):
     data = file.read()
     if not data or len(data) > 15 * 1024 * 1024:
         return None
+    if USE_SB:                                   # เก็บใน Supabase Storage
+        return sb_upload(data, 'music', ext)
     if UPLOADS_IN_DB:
         up = Upload(mime=MIMES[ext], data=data)
         db.session.add(up)
@@ -260,14 +304,14 @@ def save_audio(file):
     with open(os.path.join(folder, name), 'wb') as f:
         f.write(data)
     return f'{UPLOAD_URL}/music/{name}'
-
-
+ 
+ 
 def pop_next():
     """กลับไปหน้าที่ตั้งใจจะเข้า (เช่นลิงก์ห้องที่เพื่อนส่งมา) หลังล็อคอิน/สมัคร"""
     nxt = session.pop('next', '')
     return nxt if nxt.startswith('/') and not nxt.startswith('//') else url_for('index')
-
-
+ 
+ 
 # ---------------------------------------------------------------- Email
 def send_mail(to, subject, body):
     key = os.getenv('BREVO_API_KEY')
@@ -308,8 +352,8 @@ def send_mail(to, subject, body):
     except Exception as e:
         print('mail error:', e)
         return False
-
-
+ 
+ 
 def issue_code(u):
     u.code = ''.join(random.choices(string.digits, k=6))
     u.code_exp = datetime.utcnow() + timedelta(minutes=15)
@@ -317,16 +361,16 @@ def issue_code(u):
     db.session.commit()
     return send_mail(u.email, 'รหัสยืนยันบัญชี Date Destiny TCG',
                      f'รหัสยืนยันของคุณคือ {u.code}\nรหัสมีอายุ 15 นาที หากคุณไม่ได้สมัคร โปรดละเว้นอีเมลนี้')
-
-
+ 
+ 
 # ---------------------------------------------------------------- Pages & Auth
 @app.route('/')
 def index():
     news = News.query.order_by(News.pinned.desc(), News.created.desc()).limit(8).all()
     return render_template('index.html', news=news, n_cards=Card.query.count(),
                            n_users=User.query.filter_by(verified=True).count())
-
-
+ 
+ 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
@@ -350,8 +394,8 @@ def register():
             flash('สมัครสมาชิกสำเร็จ ยินดีต้อนรับ!', 'ok')
             return redirect(pop_next())
     return render_template('register.html')
-
-
+ 
+ 
 @app.route('/verify', methods=['GET', 'POST'])
 def verify():
     email = session.get('verify_email') or request.form.get('email', '')
@@ -374,8 +418,8 @@ def verify():
             flash('ยืนยันอีเมลสำเร็จ ยินดีต้อนรับ!', 'ok')
             return redirect(pop_next())
     return render_template('verify.html', email=email)
-
-
+ 
+ 
 @app.post('/verify/resend')
 def resend():
     u = User.query.filter_by(email=request.form.get('email', '').strip().lower()).first()
@@ -383,8 +427,8 @@ def resend():
         issue_code(u)
         flash('ส่งรหัสใหม่แล้ว', 'ok')
     return redirect(url_for('verify'))
-
-
+ 
+ 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     nx = request.args.get('next', '')
@@ -408,14 +452,14 @@ def login():
             login_user(u, remember=True)
             return redirect(pop_next())
     return render_template('login.html')
-
-
+ 
+ 
 @app.route('/logout')
 def logout():
     logout_user()
     return redirect(url_for('index'))
-
-
+ 
+ 
 @app.route('/auth/<provider>')
 def oauth_login(provider):
     client = oauth.create_client(provider)
@@ -423,8 +467,8 @@ def oauth_login(provider):
         flash(f'ยังไม่ได้ตั้งค่า {provider} ในไฟล์ .env', 'err')
         return redirect(url_for('login'))
     return client.authorize_redirect(url_for('oauth_callback', provider=provider, _external=True))
-
-
+ 
+ 
 @app.route('/auth/<provider>/callback')
 def oauth_callback(provider):
     client = oauth.create_client(provider)
@@ -466,8 +510,8 @@ def oauth_callback(provider):
         return redirect(url_for('login'))
     login_user(u, remember=True)
     return redirect(pop_next())
-
-
+ 
+ 
 @app.route('/claim-admin', methods=['GET', 'POST'])
 @login_required
 def claim_admin():
@@ -485,8 +529,8 @@ def claim_admin():
         else:
             flash('รหัสไม่ถูกต้อง (หรือยังไม่ได้ตั้ง ADMIN_CLAIM_TOKEN)', 'err')
     return render_template('claim_admin.html', enabled=bool(token), weak=weak)
-
-
+ 
+ 
 @app.route('/profile', methods=['GET', 'POST'])
 @login_required
 def profile():
@@ -504,6 +548,7 @@ def profile():
         if f and f.filename:
             url = save_upload(f, 'avatars')
             if url:
+                sb_delete(u.avatar)              # ลบรูปโปรไฟล์เก่าใน Storage (ถ้ามี)
                 u.avatar = url
         new = request.form.get('new_password', '')
         if new:
@@ -518,8 +563,8 @@ def profile():
         flash('บันทึกโปรไฟล์แล้ว', 'ok')
         return redirect(url_for('profile'))
     return render_template('profile.html')
-
-
+ 
+ 
 # ---------------------------------------------------------------- ผู้ใช้งานในระบบ
 @app.route('/users')
 @login_required
@@ -531,19 +576,19 @@ def users_page():
     online = {p['uid'] for r in game.ROOMS.values() for p in r['players'] if p.get('online') and p['uid'] > 0}
     counts = dict(db.session.query(Deck.user_id, db.func.count(Deck.id)).filter(Deck.public.is_(True)).group_by(Deck.user_id).all())
     return render_template('users.html', users=users, online=online, counts=counts)
-
-
+ 
+ 
 # ---------------------------------------------------------------- Cards
 @app.route('/cards')
 def cards():
     return render_template('cards.html')
-
-
+ 
+ 
 @app.get('/api/cards')
 def api_cards():
     return jsonify([c.to_dict() for c in Card.query.order_by(Card.code).all()])
-
-
+ 
+ 
 def card_from_form(card):
     f = request.form
     card.name = f.get('name', '').strip()[:80] or 'Unnamed'
@@ -560,20 +605,22 @@ def card_from_form(card):
     card.link_crit = to_int(f.get('link_crit'), 0, -99999, 99999) if s else 0
     card.link_def = to_int(f.get('link_def'), 0, -99999, 99999) if s else 0
     if f.get('clear_image'):
+        sb_delete(card.image)
         card.image = ''
     img = request.files.get('image')
     if img and img.filename:
         url = save_upload(img, 'cards')
         if url:
+            sb_delete(card.image)                # ลบรูปเก่าใน Storage ตอนเปลี่ยนรูป
             card.image = url
-
-
+ 
+ 
 @app.route('/admin/cards')
 @admin_required
 def admin_cards():
     return render_template('admin/cards.html', cards=Card.query.order_by(Card.id.desc()).all())
-
-
+ 
+ 
 @app.route('/admin/cards/new', methods=['GET', 'POST'])
 @app.route('/admin/cards/<int:cid>/edit', methods=['GET', 'POST'])
 @admin_required
@@ -597,31 +644,35 @@ def admin_card_form(cid=None):
         flash(f'บันทึกการ์ด {card.name} แล้ว', 'ok')
         return redirect(url_for('admin_cards'))
     return render_template('admin/card_form.html', card=card)
-
-
+ 
+ 
 @app.post('/admin/cards/<int:cid>/delete')
 @admin_required
 def admin_card_delete(cid):
-    db.session.delete(db.get_or_404(Card, cid))
+    c = db.get_or_404(Card, cid)
+    sb_delete(c.image)
+    db.session.delete(c)
     db.session.commit()
     flash('ลบการ์ดแล้ว', 'ok')
     return redirect(url_for('admin_cards'))
-
-
+ 
+ 
 # ---------------------------------------------------------------- ตรวจการตั้งค่าระบบ (admin)
 def system_checks():
     out = []
-
+ 
     def add(level, title, detail):          # level: ok | warn | bad
         out.append(dict(level=level, title=title, detail=detail))
-
+ 
     db_kind = app.config['SQLALCHEMY_DATABASE_URI'].split(':')[0].split('+')[0]
     add('ok' if ON_RENDER else 'ok', 'สภาพแวดล้อม', 'Render (ตรวจพบอัตโนมัติ)' if ON_RENDER else 'เครื่องของคุณ / เซิร์ฟเวอร์อื่น')
     if db_kind == 'sqlite':
         add('warn' if ON_RENDER else 'ok', 'ฐานข้อมูล', 'SQLite' + (' — บน Render ไฟล์จะหายเมื่อรีสตาร์ท ให้ตั้ง DATABASE_URL เป็น PostgreSQL' if ON_RENDER else ' (ไฟล์ในเครื่อง)'))
     else:
         add('ok', 'ฐานข้อมูล', f'{db_kind} (ข้อมูลถาวร) · ฐานข้อมูลฟรีของ Render หมดอายุ 30 วันหลังสร้าง')
-    if UPLOADS_IN_DB:
+    if USE_SB:
+        add('ok', 'รูปการ์ด/Sleeve/เพลง', f'เก็บใน Supabase Storage (bucket: {SB_BUCKET})')
+    elif UPLOADS_IN_DB:
         add('ok', 'รูปการ์ด/Sleeve', 'เก็บในฐานข้อมูล (ไม่หายตอนรีสตาร์ท)')
     elif ON_RENDER and not os.getenv('UPLOAD_DIR'):
         add('bad', 'รูปการ์ด/Sleeve', 'เก็บเป็นไฟล์บนดิสก์ชั่วคราว รูปจะหายตอนรีสตาร์ท ให้ตั้ง UPLOADS_IN_DB=1')
@@ -647,20 +698,20 @@ def system_checks():
     n_rooms = len(game.ROOMS)
     add('ok', 'ห้องเล่นที่เปิดอยู่', f'{n_rooms} ห้อง (เก็บในหน่วยความจำ ต้องรัน worker เดียว: gunicorn -w 1)')
     return out
-
-
+ 
+ 
 @app.route('/admin/system')
 @admin_required
 def admin_system():
     return render_template('admin/system.html', checks=system_checks())
-
-
+ 
+ 
 def startup_warnings():
     for c in system_checks():
         if c['level'] == 'bad':
             print(f"[คำเตือน] {c['title']}: {c['detail']}")
-
-
+ 
+ 
 # ---------------------------------------------------------------- News (admin)
 @app.route('/admin/news', methods=['GET', 'POST'])
 @admin_required
@@ -672,7 +723,10 @@ def admin_news():
         n.pinned = bool(request.form.get('pinned'))
         f = request.files.get('image')
         if f and f.filename:
-            n.image = save_upload(f, 'news') or n.image
+            url = save_upload(f, 'news')
+            if url:
+                sb_delete(n.image)
+                n.image = url
         if not n.id:
             db.session.add(n)
         db.session.commit()
@@ -680,16 +734,18 @@ def admin_news():
         return redirect(url_for('admin_news'))
     edit = db.session.get(News, to_int(request.args.get('edit'), 0))
     return render_template('admin/news.html', items=News.query.order_by(News.created.desc()).all(), edit=edit)
-
-
+ 
+ 
 @app.post('/admin/news/<int:nid>/delete')
 @admin_required
 def admin_news_delete(nid):
-    db.session.delete(db.get_or_404(News, nid))
+    n = db.get_or_404(News, nid)
+    sb_delete(n.image)
+    db.session.delete(n)
     db.session.commit()
     return redirect(url_for('admin_news'))
-
-
+ 
+ 
 # ---------------------------------------------------------------- Users (admin)
 @app.route('/admin/users')
 @admin_required
@@ -699,8 +755,8 @@ def admin_users():
     if q:
         qs = qs.filter(User.username.contains(q))
     return render_template('admin/users.html', users=qs.order_by(User.id.desc()).limit(200).all(), q=q)
-
-
+ 
+ 
 @app.route('/admin/users/<int:uid>', methods=['GET', 'POST'])
 @admin_required
 def admin_user_edit(uid):
@@ -714,6 +770,7 @@ def admin_user_edit(uid):
             u.banned = bool(f.get('banned'))
         u.verified = bool(f.get('verified'))
         if f.get('clear_avatar'):
+            sb_delete(u.avatar)
             u.avatar = ''
         if f.get('new_password'):
             if len(f['new_password']) < 8:
@@ -724,8 +781,8 @@ def admin_user_edit(uid):
         flash('แก้ไขโปรไฟล์ผู้ใช้แล้ว', 'ok')
         return redirect(url_for('admin_users'))
     return render_template('admin/user_edit.html', u=u)
-
-
+ 
+ 
 @app.post('/admin/users/<int:uid>/delete')
 @admin_required
 def admin_user_delete(uid):
@@ -733,13 +790,14 @@ def admin_user_delete(uid):
     if u.id == current_user.id:
         flash('ลบบัญชีตัวเองไม่ได้', 'err')
     else:
+        sb_delete(u.avatar)
         Deck.query.filter_by(user_id=u.id).delete()
         db.session.delete(u)
         db.session.commit()
         flash('ลบผู้ใช้แล้ว', 'ok')
     return redirect(url_for('admin_users'))
-
-
+ 
+ 
 # ---------------------------------------------------------------- Decks
 def clean_deck(data):
     main = {}
@@ -759,8 +817,8 @@ def clean_deck(data):
         if main[k] <= 0:
             del main[k]
     return main, partners, None
-
-
+ 
+ 
 def deck_issues(d):
     out = []
     if len(d.partners) != 4:
@@ -768,16 +826,16 @@ def deck_issues(d):
     if d.size != DECK_SIZE:
         out.append(f'เด็คหลักควรมี {DECK_SIZE} ใบ (ตอนนี้ {d.size})')
     return out
-
-
+ 
+ 
 def deck_code(d):
     cards = {c.id: c.code for c in Card.query.all()}
     payload = dict(v=1, n=d.name, d=d.description,
                    m={cards[int(k)]: q for k, q in d.main.items() if int(k) in cards},
                    p=[cards[p] for p in d.partners if p in cards])
     return base64.urlsafe_b64encode(json.dumps(payload, ensure_ascii=False).encode()).decode()
-
-
+ 
+ 
 @app.route('/decks')
 @login_required
 def decks():
@@ -785,8 +843,8 @@ def decks():
     pub = Deck.query.filter(Deck.public.is_(True), Deck.user_id != current_user.id) \
         .order_by(Deck.updated.desc()).limit(60).all()
     return render_template('decks.html', mine=mine, pub=pub, issues={d.id: deck_issues(d) for d in mine})
-
-
+ 
+ 
 @app.route('/decks/<int:did>')
 @login_required
 def deck_view(did):
@@ -799,8 +857,8 @@ def deck_view(did):
     sl = db.session.get(Sleeve, d.sleeve_id) if d.sleeve_id else None
     return render_template('deck_view.html', deck=d.to_dict(), cards=cards, owner=d.owner.username if d.owner else '-',
                            mine=mine, issues=deck_issues(d) if mine else [], sleeve=sl.to_dict() if sl else None)
-
-
+ 
+ 
 @app.route('/decks/new')
 @app.route('/decks/<int:did>/edit')
 @login_required
@@ -811,8 +869,8 @@ def deck_edit(did=None):
     return render_template('deck_edit.html', sleeves=[s.to_dict() for s in Sleeve.query.order_by(Sleeve.id)],
                            deck=d.to_dict() if d else
                            dict(id=None, name='เด็คใหม่', desc='', main={}, partners=[], operator=None, sleeve=None, public=False))
-
-
+ 
+ 
 @app.post('/api/decks')
 @login_required
 def api_deck_save():
@@ -834,8 +892,8 @@ def api_deck_save():
     d.cover_id = cid if cid and db.session.get(Card, cid) else None
     db.session.commit()
     return jsonify(id=d.id, issues=deck_issues(d))
-
-
+ 
+ 
 @app.get('/api/decks/<int:did>/code')
 @login_required
 def api_deck_code(did):
@@ -843,8 +901,8 @@ def api_deck_code(did):
     if d.user_id != current_user.id and not d.public:
         abort(403)
     return jsonify(code=deck_code(d))
-
-
+ 
+ 
 @app.post('/decks/<int:did>/copy')
 @login_required
 def deck_copy(did):
@@ -857,8 +915,8 @@ def deck_copy(did):
     db.session.commit()
     flash('คัดลอกเด็คไปยังคลังของคุณแล้ว', 'ok')
     return redirect(url_for('deck_edit', did=n.id))
-
-
+ 
+ 
 @app.post('/decks/<int:did>/delete')
 @login_required
 def deck_delete(did):
@@ -869,8 +927,8 @@ def deck_delete(did):
     db.session.commit()
     flash('ลบเด็คแล้ว', 'ok')
     return redirect(url_for('decks'))
-
-
+ 
+ 
 @app.post('/decks/<int:did>/public')
 @login_required
 def deck_public(did):
@@ -880,8 +938,8 @@ def deck_public(did):
     d.public = not d.public
     db.session.commit()
     return redirect(url_for('decks'))
-
-
+ 
+ 
 @app.post('/decks/import')
 @login_required
 def deck_import():
@@ -903,8 +961,8 @@ def deck_import():
         print('import error', e)
         flash('โค้ดเด็คไม่ถูกต้อง', 'err')
         return redirect(url_for('decks'))
-
-
+ 
+ 
 # ---------------------------------------------------------------- Playmat (สกินพื้นสนาม)
 BUILTIN_MATS = [
     dict(key='b:classic', name='คลาสสิก (เทา)', css='', image=''),
@@ -912,26 +970,26 @@ BUILTIN_MATS = [
     dict(key='b:crimson', name='Crimson', css='linear-gradient(160deg,#3a0f18,#7a1f33 55%,#2a0a12)', image=''),
     dict(key='b:aurora', name='Aurora', css='linear-gradient(160deg,#0f3d3a,#1f6f66 45%,#3b2a6f)', image=''),
 ]
-
-
+ 
+ 
 def playmat_options():
     items = [dict(o, builtin=True) for o in BUILTIN_MATS] + [dict(p.to_dict(), css='', builtin=False) for p in Playmat.query.order_by(Playmat.id)]
     return items
-
-
+ 
+ 
 def playmat_default_key():
     d = Playmat.query.filter_by(is_default=True).first()
     return f'u:{d.id}' if d else 'b:classic'
-
-
+ 
+ 
 def playmat_selected(user):
     keys = {o['key'] for o in playmat_options()}
     if user.playmat in keys and user.playmat != '':
         return user.playmat
     d = Playmat.query.filter_by(is_default=True).first()
     return f'u:{d.id}' if d else 'b:classic'
-
-
+ 
+ 
 @app.route('/api/me/sleeve', methods=['GET', 'POST'])
 @login_required
 def api_my_sleeve():
@@ -942,14 +1000,14 @@ def api_my_sleeve():
         current_user.sleeve = sid or None
         db.session.commit()
     return jsonify(items=[x.to_dict() for x in Sleeve.query.order_by(Sleeve.id)], selected=current_user.sleeve or 0)
-
-
+ 
+ 
 @app.get('/api/playmats')
 @login_required
 def api_playmats():
     return jsonify(items=playmat_options(), selected=playmat_selected(current_user))
-
-
+ 
+ 
 @app.post('/api/me/playmat')
 @login_required
 def api_set_playmat():
@@ -959,8 +1017,8 @@ def api_set_playmat():
     current_user.playmat = key
     db.session.commit()
     return jsonify(ok=True, selected=key)
-
-
+ 
+ 
 @app.route('/admin/playmats', methods=['GET', 'POST'])
 @admin_required
 def admin_playmats():
@@ -979,8 +1037,8 @@ def admin_playmats():
         flash('เพิ่ม Playmat แล้ว', 'ok')
         return redirect(url_for('admin_playmats'))
     return render_template('admin/playmats.html', items=Playmat.query.order_by(Playmat.id.desc()).all())
-
-
+ 
+ 
 @app.post('/admin/playmats/<int:pid>/default')
 @admin_required
 def admin_playmat_default(pid):
@@ -990,25 +1048,26 @@ def admin_playmat_default(pid):
     p.is_default = not was
     db.session.commit()
     return redirect(url_for('admin_playmats'))
-
-
+ 
+ 
 @app.post('/admin/playmats/<int:pid>/delete')
 @admin_required
 def admin_playmat_delete(pid):
     p = db.get_or_404(Playmat, pid)
+    sb_delete(p.image)
     User.query.filter_by(playmat=f'u:{pid}').update({User.playmat: ''})
     db.session.delete(p)
     db.session.commit()
     flash('ลบ Playmat แล้ว', 'ok')
     return redirect(url_for('admin_playmats'))
-
-
+ 
+ 
 # ---------------------------------------------------------------- เพลงประกอบ
 @app.get('/api/music')
 def api_music():
     return jsonify([t.to_dict() for t in Track.query.filter_by(enabled=True).order_by(Track.id)])
-
-
+ 
+ 
 @app.route('/admin/music', methods=['GET', 'POST'])
 @admin_required
 def admin_music():
@@ -1024,8 +1083,8 @@ def admin_music():
         flash('เพิ่มเพลงแล้ว', 'ok')
         return redirect(url_for('admin_music'))
     return render_template('admin/music.html', items=Track.query.order_by(Track.id.desc()).all())
-
-
+ 
+ 
 @app.post('/admin/music/<int:tid>/toggle')
 @admin_required
 def admin_music_toggle(tid):
@@ -1033,12 +1092,13 @@ def admin_music_toggle(tid):
     t.enabled = not t.enabled
     db.session.commit()
     return redirect(url_for('admin_music'))
-
-
+ 
+ 
 @app.post('/admin/music/<int:tid>/delete')
 @admin_required
 def admin_music_delete(tid):
     t = db.get_or_404(Track, tid)
+    sb_delete(t.url)
     m = re.match(r'^/media/(\d+)\.', t.url or '')
     if m:
         up = db.session.get(Upload, int(m.group(1)))
@@ -1048,14 +1108,14 @@ def admin_music_delete(tid):
     db.session.commit()
     flash('ลบเพลงแล้ว', 'ok')
     return redirect(url_for('admin_music'))
-
-
+ 
+ 
 # ---------------------------------------------------------------- Sleeves (หลังการ์ด)
 @app.get('/api/sleeves')
 def api_sleeves():
     return jsonify([s.to_dict() for s in Sleeve.query.order_by(Sleeve.id)])
-
-
+ 
+ 
 @app.route('/admin/sleeves', methods=['GET', 'POST'])
 @admin_required
 def admin_sleeves():
@@ -1074,8 +1134,8 @@ def admin_sleeves():
         flash('เพิ่ม Sleeve แล้ว', 'ok')
         return redirect(url_for('admin_sleeves'))
     return render_template('admin/sleeves.html', items=Sleeve.query.order_by(Sleeve.id.desc()).all())
-
-
+ 
+ 
 @app.post('/admin/sleeves/<int:sid>/default')
 @admin_required
 def admin_sleeve_default(sid):
@@ -1085,18 +1145,20 @@ def admin_sleeve_default(sid):
     db.session.commit()
     flash(f'ตั้ง {s.name} เป็นหลังการ์ดเริ่มต้นแล้ว', 'ok')
     return redirect(url_for('admin_sleeves'))
-
-
+ 
+ 
 @app.post('/admin/sleeves/<int:sid>/delete')
 @admin_required
 def admin_sleeve_delete(sid):
-    db.session.delete(db.get_or_404(Sleeve, sid))
+    s = db.get_or_404(Sleeve, sid)
+    sb_delete(s.image)
+    db.session.delete(s)
     Deck.query.filter_by(sleeve_id=sid).update({Deck.sleeve_id: None})
     db.session.commit()
     flash('ลบ Sleeve แล้ว', 'ok')
     return redirect(url_for('admin_sleeves'))
-
-
+ 
+ 
 # ---------------------------------------------------------------- Rooms
 def room_deck(user, deck_id):
     d = db.session.get(Deck, to_int(deck_id, 0))
@@ -1113,21 +1175,21 @@ def room_deck(user, deck_id):
     sl = sl or Sleeve.query.filter_by(is_default=True).first()
     return dict(id=d.id, main=main, partners=d.partners, operator=None, name=d.name,
                 sleeve=(sl.image if sl else '')), cards
-
-
+ 
+ 
 @app.route('/rooms')
 @login_required
 def rooms():
     ds = Deck.query.filter_by(user_id=current_user.id).all()
     return render_template('rooms.html', decks=[dict(id=d.id, name=d.name, ok=len(d.partners) == 4 and d.size > 0) for d in ds])
-
-
+ 
+ 
 @app.get('/api/rooms')
 @login_required
 def api_rooms():
     return jsonify(game.list_rooms())
-
-
+ 
+ 
 @app.post('/rooms/create')
 @login_required
 def room_create():
@@ -1152,8 +1214,8 @@ def room_create():
             dp = game.add_player(room, -current_user.id, 'ฝั่งทดสอบ', '', deck2, cards2)
             dp['playmat'] = playmat_default_key()
     return redirect(url_for('room_play', code=code))
-
-
+ 
+ 
 @app.route('/rooms/<code>')
 @login_required
 def room_play(code):
@@ -1164,20 +1226,20 @@ def room_play(code):
     ds = Deck.query.filter(db.or_(Deck.user_id == current_user.id)).all()
     return render_template('play.html', code=room['code'], public_url=PUBLIC_URL,
                            decks=[dict(id=d.id, name=d.name) for d in ds if len(d.partners) == 4 and d.size > 0])
-
-
+ 
+ 
 # ---------------------------------------------------------------- Socket.IO
 SID = {}
-
-
+ 
+ 
 def push(room):
     for p in room['players']:
         if p['sid']:
             emit('state', game.view(room, p['uid']), to=p['sid'])
     for sid in room['spectators']:
         emit('state', game.view(room, None), to=sid)
-
-
+ 
+ 
 @sio.on('join')
 def on_join(d):
     if not current_user.is_authenticated:
@@ -1206,8 +1268,8 @@ def on_join(d):
         else:
             room['spectators'][request.sid] = current_user.username
         push(room)
-
-
+ 
+ 
 @sio.on('act')
 def on_act(d):
     if not current_user.is_authenticated:
@@ -1246,8 +1308,8 @@ def on_act(d):
         if d.get('type') == 'peek' and extra is not None:
             emit('peek', {'cards': extra})
         push(room)
-
-
+ 
+ 
 @sio.on('disconnect')
 def on_disconnect():
     info = SID.pop(request.sid, None)
@@ -1262,8 +1324,8 @@ def on_disconnect():
         if p and p['sid'] == request.sid:
             p['online'] = False
         push(room)
-
-
+ 
+ 
 # ---------------------------------------------------------------- CLI / seed
 @app.cli.command('make-admin')
 def make_admin_cmd():
@@ -1276,8 +1338,8 @@ def make_admin_cmd():
     u.role = 'admin'
     db.session.commit()
     print('ตั้งเป็น Admin แล้ว')
-
-
+ 
+ 
 @app.cli.command('seed-demo')
 def seed_demo():
     """flask seed-demo  (เพิ่มการ์ดตัวอย่าง สำหรับทดลองระบบ)"""
@@ -1290,8 +1352,8 @@ def seed_demo():
         n += 1
     db.session.commit()
     print(f'เพิ่มการ์ดตัวอย่าง {n} ใบ')
-
-
+ 
+ 
 def migrate():
     """เพิ่มคอลัมน์ใหม่ให้ฐานข้อมูลเดิมโดยไม่ต้องลบข้อมูล"""
     from sqlalchemy import inspect, text
@@ -1320,13 +1382,13 @@ def migrate():
         seen.add((u.username or '').lower())
     if changed:
         db.session.commit()
-
-
+ 
+ 
 with app.app_context():
     db.create_all()
     migrate()
 startup_warnings()
-
+ 
 if __name__ == '__main__':
     sio.run(app, host='0.0.0.0', port=int(os.getenv('PORT', 5000)),
             debug=os.getenv('FLASK_DEBUG') == '1', allow_unsafe_werkzeug=True)
