@@ -1,11 +1,9 @@
-# Render Blueprint: สร้างเว็บ + ฐานข้อมูลให้ในคลิกเดียว (New + > Blueprint)
 services:
   - type: web
     name: date-destiny-tcg
     runtime: python
     plan: free
     buildCommand: pip install -r requirements.txt
-    # ต้องใช้ worker เดียว (-w 1) เพราะสถานะห้องเล่นเก็บในหน่วยความจำ
     startCommand: gunicorn -k gthread --threads 100 -w 1 -b 0.0.0.0:$PORT app:app
     healthCheckPath: /healthz
     envVars:
@@ -13,19 +11,13 @@ services:
         value: 3.12.8
       - key: SECRET_KEY
         generateValue: true
-      - key: ADMIN_CLAIM_TOKEN        # รหัสลับสำหรับขอสิทธิ์ Admin ที่หน้า /claim-admin
+      - key: ADMIN_CLAIM_TOKEN
         generateValue: true
       - key: DATABASE_URL
-        fromDatabase:
-          name: dds-db
-          property: connectionString
-      - key: UPLOADS_IN_DB            # เก็บรูปการ์ด/Sleeve ในฐานข้อมูล (Render ฟรีไม่มีดิสก์ถาวร)
+        sync: false               # ใส่ค่าเองใน Render Dashboard (connection string ของ Supabase)
+      - key: UPLOADS_IN_DB
         value: "1"
       - key: DECK_SIZE
         value: "50"
       - key: MAX_COPIES
         value: "4"
-
-databases:
-  - name: dds-db
-    plan: free
